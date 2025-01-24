@@ -18,6 +18,13 @@ export const posts = pgTable("posts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const postMentions = pgTable("post_mentions", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  mentionedUserId: integer("mentioned_user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const friends = pgTable("friends", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
@@ -28,14 +35,28 @@ export const friends = pgTable("friends", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
+  mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
   receivedFriendRequests: many(friends, { relationName: "receivedFriendRequests" }),
 }));
 
-export const postsRelations = relations(posts, ({ one }) => ({
+export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, {
     fields: [posts.userId],
     references: [users.id],
+  }),
+  mentions: many(postMentions),
+}));
+
+export const postMentionsRelations = relations(postMentions, ({ one }) => ({
+  post: one(posts, {
+    fields: [postMentions.postId],
+    references: [posts.id],
+  }),
+  mentionedUser: one(users, {
+    fields: [postMentions.mentionedUserId],
+    references: [users.id],
+    relationName: "mentionedIn",
   }),
 }));
 
@@ -67,3 +88,8 @@ export const insertFriendSchema = createInsertSchema(friends);
 export const selectFriendSchema = createSelectSchema(friends);
 export type Friend = typeof friends.$inferSelect;
 export type NewFriend = typeof friends.$inferInsert;
+
+export const insertPostMentionSchema = createInsertSchema(postMentions);
+export const selectPostMentionSchema = createSelectSchema(postMentions);
+export type PostMention = typeof postMentions.$inferSelect;
+export type NewPostMention = typeof postMentions.$inferInsert;

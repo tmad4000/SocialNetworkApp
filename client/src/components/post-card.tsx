@@ -2,15 +2,37 @@ import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "wouter";
-import type { Post, User } from "@db/schema";
+import type { Post, User, PostMention } from "@db/schema";
 
 interface PostCardProps {
   post: Post & {
     user: User;
+    mentions: (PostMention & { mentionedUser: User })[];
   };
 }
 
 export default function PostCard({ post }: PostCardProps) {
+  // Function to replace @mentions with links
+  const renderContent = (content: string) => {
+    const parts = content.split(/(@\w+)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('@')) {
+        const username = part.slice(1);
+        const mention = post.mentions.find(m => m.mentionedUser.username === username);
+        if (mention) {
+          return (
+            <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
+              <span className="text-primary hover:underline cursor-pointer">
+                {part}
+              </span>
+            </Link>
+          );
+        }
+      }
+      return part;
+    });
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-4 space-y-0">
@@ -32,7 +54,7 @@ export default function PostCard({ post }: PostCardProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <p className="whitespace-pre-wrap">{post.content}</p>
+        <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
       </CardContent>
     </Card>
   );
