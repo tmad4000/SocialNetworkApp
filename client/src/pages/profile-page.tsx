@@ -1,23 +1,61 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Users, Pencil } from "lucide-react";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
+import { useToast } from "@/hooks/use-toast";
 import type { User, Post, Friend } from "@db/schema";
 import { Link } from "wouter";
+import { useState } from "react";
 
 export default function ProfilePage() {
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [newBio, setNewBio] = useState("");
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
   const { user: currentUser } = useUser();
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: [`/api/user/${params?.id}`],
+  });
+
+  const updateBio = useMutation({
+    mutationFn: async (bio: string) => {
+      const res = await fetch("/api/user/bio", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bio }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsEditingBio(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
+      toast({
+        title: "Success",
+        description: "Bio updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
   });
 
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & { user: User })[]>({
@@ -39,14 +77,21 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const isOwnProfile = currentUser?.id === user.id;
-
-  // Check for any friend request (pending or accepted)
   const friendRequest = friends?.find(
     f => (f.userId === currentUser?.id && f.friendId === user.id) ||
          (f.userId === user.id && f.friendId === currentUser?.id)
   );
 
-  // Process friends list to get unique friend entries (only accepted)
+  const handleStartEdit = () => {
+    setNewBio(user.bio || "");
+    setIsEditingBio(true);
+  };
+
+  const handleSaveBio = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateBio.mutate(newBio);
+  };
+
   const acceptedFriends = friends?.reduce<{ id: number; username: string; avatar: string | null }[]>((acc, f) => {
     if (f.status === 'accepted') {
       if (f.friendId === user.id) {
@@ -70,7 +115,45 @@ export default function ProfilePage() {
 
           <div className="flex-1">
             <h1 className="text-2xl font-bold">{user.username}</h1>
-            <p className="text-muted-foreground">{user.bio || "No bio yet"}</p>
+
+            {isEditingBio ? (
+              <form onSubmit={handleSaveBio} className="mt-2 space-y-2">
+                <Textarea 
+                  value={newBio}
+                  onChange={(e) => setNewBio(e.target.value)}
+                  placeholder="Write something about yourself..."
+                  className="min-h-[100px]"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={updateBio.isPending}>
+                    Save
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setIsEditingBio(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-start gap-2">
+                <p className="text-muted-foreground flex-1">
+                  {user.bio || "No bio yet"}
+                </p>
+                {isOwnProfile && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleStartEdit}
+                    className="flex-shrink-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {!isOwnProfile && (
@@ -79,7 +162,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Friends Section */}
       <Card className="mb-8">
         <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
