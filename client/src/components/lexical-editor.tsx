@@ -80,7 +80,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     const removeBackspaceListener = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       (event) => {
-        const selection = editor.getEditorState()._selection;
+        const selection = $getRoot().getSelection();
         if (selection && selection.anchor.offset === 0) {
           const node = selection.anchor.getNode();
           if ($isMentionNode(node)) {
