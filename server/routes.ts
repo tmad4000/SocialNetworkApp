@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
 import { posts, users, friends, postMentions } from "@db/schema";
-import { eq, desc, and, or, inArray } from "drizzle-orm";
+import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -35,17 +35,22 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Search query is required");
     }
 
-    const searchResults = await db.query.users.findMany({
-      where: eq(users.username, query),
-      columns: {
-        id: true,
-        username: true,
-        avatar: true,
-      },
-      limit: 10,
-    });
+    try {
+      const searchResults = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(ilike(users.username, `%${query}%`))
+        .limit(10);
 
-    res.json(searchResults);
+      res.json(searchResults);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      res.status(500).json({ message: "Error searching users" });
+    }
   });
 
   // Posts with mentions
@@ -215,7 +220,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-
   // Friends
   app.get("/api/friends", async (req, res) => {
     if (!req.user) {
@@ -299,23 +303,6 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     res.json(updatedRequest[0]);
-  });
-
-  // Users
-  app.get("/api/users/search", async (req, res) => {
-    const { query } = req.query;
-    if (!query || typeof query !== "string") {
-      return res.status(400).send("Search query is required");
-    }
-
-    const searchResults = await db.query.users.findMany({
-      where: (users) => {
-        return users.username.toLowerCase().includes(query.toLowerCase());
-      },
-      limit: 10,
-    });
-
-    res.json(searchResults);
   });
 
   const httpServer = createServer(app);
