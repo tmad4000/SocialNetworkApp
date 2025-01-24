@@ -12,24 +12,31 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post }: PostCardProps) {
-  // Function to replace @mentions with links, but only for actual mentions
   const renderContent = (content: string) => {
-    // Split on word boundaries before @ to preserve email addresses
-    const parts = content.split(/(\s@\w+|\b@\w+)/g);
+    // Split content to preserve @ symbols and surrounding text
+    const parts = content.split(/(\S*@\S*)/g);
     return parts.map((part, index) => {
-      // Only process parts that start with @ and are preceded by space or start of string
-      if (part.trim().startsWith('@')) {
-        const username = part.trim().slice(1);
-        const mention = post.mentions.find(m => m.mentionedUser.username === username);
-        if (mention) {
-          return (
-            <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
-              <span className="text-primary hover:underline cursor-pointer">
-                {part}
-              </span>
-            </Link>
-          );
+      if (part.includes('@')) {
+        // Check if this is a mention
+        if (part.startsWith('@')) {
+          const username = part.slice(1);
+          const mention = post.mentions.find(m => m.mentionedUser.username === username);
+          if (mention) {
+            return (
+              <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
+                <span className="text-primary hover:underline cursor-pointer">
+                  {part}
+                </span>
+              </Link>
+            );
+          }
         }
+        // If not a mention but contains @, just style it blue
+        return (
+          <span key={index} className="text-primary">
+            {part}
+          </span>
+        );
       }
       return part;
     });
@@ -51,7 +58,7 @@ export default function PostCard({ post }: PostCardProps) {
             </span>
           </Link>
           <p className="text-sm text-muted-foreground">
-            {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+            {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
           </p>
         </div>
       </CardHeader>
