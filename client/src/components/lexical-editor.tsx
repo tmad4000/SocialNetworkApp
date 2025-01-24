@@ -310,10 +310,10 @@ export default function LexicalEditor({ onChange, initialValue = "", users }: Le
       <div className="relative min-h-[100px] w-full border rounded-md">
         <PlainTextPlugin
           contentEditable={
-            <ContentEditable className="min-h-[100px] outline-none p-3" />
+            <ContentEditable className="min-h-[100px] outline-none px-3 py-2" />
           }
           placeholder={
-            <div className="absolute top-3 left-3 text-muted-foreground pointer-events-none">
+            <div className="absolute top-2 left-3 text-muted-foreground pointer-events-none">
               What's on your mind? Use @ to mention users
             </div>
           }
