@@ -21,7 +21,7 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
   const queryClient = useQueryClient();
 
   const { data: searchResults } = useQuery<User[]>({
-    queryKey: ["/api/users/search", { query: mentionSearch }],
+    queryKey: [`/api/users/search?query=${encodeURIComponent(mentionSearch)}`],
     enabled: showMentions && mentionSearch.length > 0,
   });
 
