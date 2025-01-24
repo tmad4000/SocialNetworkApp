@@ -10,10 +10,10 @@ import {
   LexicalNode,
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
-  SELECTION_CHANGE_COMMAND,
-  $getPreviousSelection,
   $getSelection,
   $isRangeSelection,
+  $createRangeSelection,
+  $setSelection,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -58,30 +58,39 @@ export class MentionNode extends TextNode {
     return false;
   }
 
-  selectPrevious(): boolean {
-    this.getParentOrThrow().selectStart();
-    return true;
+  createSelection(): RangeSelection {
+    const selection = $createRangeSelection();
+    selection.anchor.set(this.getKey(), 0, 'text');
+    selection.focus.set(this.getKey(), this.getTextContent().length, 'text');
+    return selection;
   }
 
-  selectNext(): boolean {
-    this.getParentOrThrow().selectEnd();
-    return true;
+  selectPrevious(anchorOffset?: number, focusOffset?: number): RangeSelection {
+    const selection = this.createSelection();
+    if (typeof anchorOffset === 'number') {
+      selection.anchor.offset = anchorOffset;
+    }
+    if (typeof focusOffset === 'number') {
+      selection.focus.offset = focusOffset;
+    }
+    $setSelection(selection);
+    return selection;
   }
 
-  deletePrevious(): boolean {
-    this.selectPrevious();
-    this.remove();
-    return true;
+  selectNext(anchorOffset?: number, focusOffset?: number): RangeSelection {
+    const selection = this.createSelection();
+    if (typeof anchorOffset === 'number') {
+      selection.anchor.offset = anchorOffset;
+    }
+    if (typeof focusOffset === 'number') {
+      selection.focus.offset = focusOffset;
+    }
+    $setSelection(selection);
+    return selection;
   }
 
-  deleteNext(): boolean {
-    this.selectNext();
-    this.remove();
-    return true;
-  }
-
-  splitText(): TextNode {
-    return this;
+  splitText(...splitOffsets: number[]): TextNode[] {
+    return [this];
   }
 
   exportJSON() {
@@ -108,7 +117,7 @@ export function $createMentionNode(mentionName: string): MentionNode {
   return new MentionNode(mentionName);
 }
 
-export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNode {
+export function $isMentionNode(node: LexicalNode | null | undefined): boolean {
   return node instanceof MentionNode;
 }
 
@@ -126,10 +135,46 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [filteredUsers, setFilteredUsers] = useState(users);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [mentionString, setMentionString] = useState("");
 
   useEffect(() => {
-    // Handle atomic deletion
-    const removeBackspaceListener = editor.registerCommand(
+    const removeListener = editor.registerTextContentListener((text) => {
+      const match = text.match(/@(\w*)$/);
+      if (match) {
+        const query = match[1];
+        setMentionString(match[0]);
+        const filtered = users.filter((user) =>
+          user.username.toLowerCase().includes(query.toLowerCase())
+        );
+        setFilteredUsers(filtered);
+        setShowSuggestions(true);
+        setSelectedIndex(0);
+
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const editorElement = editor.getRootElement();
+          if (editorElement) {
+            const editorRect = editorElement.getBoundingClientRect();
+            setMentionPosition({
+              top: rect.bottom - editorRect.top,
+              left: rect.left - editorRect.left,
+            });
+          }
+        }
+      } else if (!match && showSuggestions) {
+        setShowSuggestions(false);
+      }
+    });
+
+    return () => {
+      removeListener();
+    };
+  }, [editor, users, showSuggestions]);
+
+  useEffect(() => {
+    const removeKeyDownListener = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       () => {
         const selection = $getSelection();
@@ -148,9 +193,14 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       COMMAND_PRIORITY_CRITICAL,
     );
 
-    // Handle keyboard navigation for suggestions
+    return () => {
+      removeKeyDownListener();
+    };
+  }, [editor]);
+
+  useEffect(() => {
     const removeKeyDownListener = editor.registerCommand(
-      'keydown',
+      "keydown" as any,
       (event: KeyboardEvent) => {
         if (!showSuggestions) return false;
 
@@ -188,73 +238,39 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       COMMAND_PRIORITY_CRITICAL,
     );
 
-    // Track text changes for @ mentions
-    const removeTextListener = editor.registerTextContentListener((text) => {
-      const match = text.match(/@(\w*)$/);
-      if (match) {
-        const query = match[1];
-        const filtered = users.filter((user) =>
-          user.username.toLowerCase().includes(query.toLowerCase())
-        );
-        setFilteredUsers(filtered);
-        setShowSuggestions(true);
-        setSelectedIndex(0);
-
-        // Calculate mention dropdown position
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          const editorElement = editor.getRootElement();
-          if (editorElement) {
-            const editorRect = editorElement.getBoundingClientRect();
-            setMentionPosition({
-              top: rect.bottom - editorRect.top,
-              left: rect.left - editorRect.left,
-            });
-          }
-        }
-      } else {
-        setShowSuggestions(false);
-      }
-    });
-
     return () => {
-      removeTextListener();
       removeKeyDownListener();
-      removeBackspaceListener();
     };
-  }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
+  }, [editor, showSuggestions, filteredUsers, selectedIndex]);
 
   const insertMention = (username: string) => {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
 
-      const textContent = selection.getTextContent();
-      const lastAtPos = textContent.lastIndexOf('@');
-      if (lastAtPos === -1) return;
+      const nodes = selection.getNodes();
+      const lastNode = nodes[nodes.length - 1];
+      const textContent = lastNode.getTextContent();
+      const mentionOffset = textContent.lastIndexOf('@');
 
-      // Create new nodes
+      if (mentionOffset === -1) return;
+
+      // Create mention node
       const mentionNode = $createMentionNode(username);
       const spaceNode = $createTextNode(' ');
 
-      // Get the current paragraph and selection
-      const anchor = selection.anchor;
-      const currentNode = anchor.getNode();
-      const currentParagraph = currentNode.getParentOrThrow();
+      // Split text and replace mention
+      const textBeforeMention = textContent.slice(0, mentionOffset);
+      const textNode = $createTextNode(textBeforeMention);
 
-      // Split text at @ symbol and create new paragraph
-      const textBeforeMention = textContent.slice(0, lastAtPos);
-      const paragraphNode = $createParagraphNode();
-      paragraphNode.append($createTextNode(textBeforeMention));
-      paragraphNode.append(mentionNode);
-      paragraphNode.append(spaceNode);
+      const parent = lastNode.getParent();
+      if (!parent) return;
 
-      // Replace the current paragraph
-      currentParagraph.replace(paragraphNode);
+      // Replace the current node with our new nodes
+      lastNode.remove();
+      parent.append(textNode, mentionNode, spaceNode);
 
-      // Set selection after the space
+      // Move selection after the space
       spaceNode.select();
     });
     setShowSuggestions(false);
