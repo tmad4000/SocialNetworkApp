@@ -10,10 +10,10 @@ import {
   LexicalNode,
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
-  SELECTION_CHANGE_COMMAND,
   $getPreviousSelection,
   $getSelection,
   $isRangeSelection,
+  $createRangeSelection,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -61,15 +61,19 @@ export class MentionNode extends TextNode {
   }
 
   // Override selectPrevious for atomic selection
-  selectPrevious(): boolean {
-    this.getParentOrThrow().selectStart();
-    return true;
+  selectPrevious(anchorOffset?: number, focusOffset?: number): RangeSelection {
+    const selection = $createRangeSelection();
+    const parent = this.getParentOrThrow();
+    parent.selectStart(selection);
+    return selection;
   }
 
   // Override selectNext for atomic selection
-  selectNext(): boolean {
-    this.getParentOrThrow().selectEnd();
-    return true;
+  selectNext(anchorOffset?: number, focusOffset?: number): RangeSelection {
+    const selection = $createRangeSelection();
+    const parent = this.getParentOrThrow();
+    parent.selectEnd(selection);
+    return selection;
   }
 
   // Handle backspace for atomic deletion
@@ -87,8 +91,8 @@ export class MentionNode extends TextNode {
   }
 
   // Prevent splitting the node
-  splitText(): TextNode {
-    return this;
+  splitText(...splitOffsets: number[]): TextNode[] {
+    return [this];
   }
 
   // Custom serialization
