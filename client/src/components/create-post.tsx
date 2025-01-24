@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import type { User } from "@db/schema";
+import LexicalEditor from "./lexical-editor";
 
 interface CreatePostProps {
   onSuccess?: () => void;
@@ -63,11 +63,9 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
     <Card>
       <CardContent className="p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="What's on your mind?"
-            className="min-h-[100px] resize-none"
+          <LexicalEditor
+            onChange={setContent}
+            users={users || []}
           />
           <div className="flex justify-end">
             <Button
