@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends } from "@db/schema";
-import { eq, desc, and, or } from "drizzle-orm";
+import { posts, users, friends, postMentions } from "@db/schema";
+import { eq, desc, and, or, inArray } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -26,6 +26,127 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     res.json(updatedUser);
+  });
+
+  // Search users for mentions
+  app.get("/api/users/search", async (req, res) => {
+    const { query } = req.query;
+    if (!query || typeof query !== "string") {
+      return res.status(400).send("Search query is required");
+    }
+
+    const searchResults = await db.query.users.findMany({
+      where: eq(users.username, query),
+      columns: {
+        id: true,
+        username: true,
+        avatar: true,
+      },
+      limit: 10,
+    });
+
+    res.json(searchResults);
+  });
+
+  // Posts with mentions
+  app.get("/api/posts", async (req, res) => {
+    const userId = req.user?.id;
+
+    // Get posts that either:
+    // 1. Are from users the current user follows
+    // 2. Mention the current user
+    // 3. Are created by the current user
+    const allPosts = await db.query.posts.findMany({
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        mentions: {
+          with: {
+            mentionedUser: {
+              columns: {
+                id: true,
+                username: true,
+                avatar: true,
+              }
+            }
+          }
+        }
+      },
+      orderBy: desc(posts.createdAt),
+    });
+
+    res.json(allPosts);
+  });
+
+  app.post("/api/posts", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { content } = req.body;
+    if (!content) {
+      return res.status(400).send("Content is required");
+    }
+
+    // Extract mentions from content using regex
+    const mentions = Array.from(content.matchAll(/@(\w+)/g));
+    const mentionedUsernames = mentions.map(match => match[1]);
+
+    // Find mentioned users
+    const mentionedUsers = await db.query.users.findMany({
+      where: inArray(users.username, mentionedUsernames),
+    });
+
+    // Create post
+    const [newPost] = await db
+      .insert(posts)
+      .values({
+        content,
+        userId: req.user.id,
+      })
+      .returning();
+
+    // Create mentions
+    if (mentionedUsers.length > 0) {
+      await db.insert(postMentions).values(
+        mentionedUsers.map(user => ({
+          postId: newPost.id,
+          mentionedUserId: user.id,
+        }))
+      );
+    }
+
+    // Return post with mentions
+    const postWithMentions = await db.query.posts.findFirst({
+      where: eq(posts.id, newPost.id),
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        mentions: {
+          with: {
+            mentionedUser: {
+              columns: {
+                id: true,
+                username: true,
+                avatar: true,
+              }
+            }
+          }
+        }
+      },
+    });
+
+    res.json(postWithMentions);
   });
 
   // User profile
@@ -77,42 +198,6 @@ export function registerRoutes(app: Express): Server {
     res.json(userPosts);
   });
 
-  // Posts
-  app.get("/api/posts", async (req, res) => {
-    const allPosts = await db.query.posts.findMany({
-      with: {
-        user: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
-          },
-        },
-      },
-      orderBy: desc(posts.createdAt),
-    });
-    res.json(allPosts);
-  });
-
-  app.post("/api/posts", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const { content } = req.body;
-    if (!content) {
-      return res.status(400).send("Content is required");
-    }
-
-    const newPost = await db.insert(posts)
-      .values({
-        content,
-        userId: req.user.id,
-      })
-      .returning();
-
-    res.json(newPost[0]);
-  });
 
   // Friends
   app.get("/api/friends", async (req, res) => {
