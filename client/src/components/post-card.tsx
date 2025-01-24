@@ -13,27 +13,14 @@ interface PostCardProps {
 
 export default function PostCard({ post }: PostCardProps) {
   const renderContent = (content: string) => {
-    // Split content to preserve @ symbols and surrounding text
-    const parts = content.split(/(\S*@\S*)/g);
+    // Split content into parts, preserving @mentions
+    const parts = content.split(/(@\w+)/g);
     return parts.map((part, index) => {
-      if (part.includes('@')) {
-        // Check if this is a mention
-        if (part.startsWith('@')) {
-          const username = part.slice(1);
-          const mention = post.mentions.find(m => m.mentionedUser.username === username);
-          if (mention) {
-            return (
-              <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
-                <span className="text-primary hover:underline cursor-pointer">
-                  {part}
-                </span>
-              </Link>
-            );
-          }
-        }
-        // For email addresses, extract the username part
-        const username = part.split('@')[0];
+      // Check if this part is a mention (starts with @)
+      if (part.startsWith('@')) {
+        const username = part.slice(1); // Remove @ symbol
         const mention = post.mentions.find(m => m.mentionedUser.username === username);
+
         if (mention) {
           return (
             <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
@@ -43,13 +30,9 @@ export default function PostCard({ post }: PostCardProps) {
             </Link>
           );
         }
-        // Any other @ content just gets styled blue
-        return (
-          <span key={index} className="text-primary">
-            {part}
-          </span>
-        );
       }
+
+      // Return regular text
       return part;
     });
   };
