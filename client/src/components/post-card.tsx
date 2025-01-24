@@ -12,12 +12,14 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post }: PostCardProps) {
-  // Function to replace @mentions with links
+  // Function to replace @mentions with links, but only for actual mentions
   const renderContent = (content: string) => {
-    const parts = content.split(/(@\w+)/g);
+    // Split on word boundaries before @ to preserve email addresses
+    const parts = content.split(/(\s@\w+|\b@\w+)/g);
     return parts.map((part, index) => {
-      if (part.startsWith('@')) {
-        const username = part.slice(1);
+      // Only process parts that start with @ and are preceded by space or start of string
+      if (part.trim().startsWith('@')) {
+        const username = part.trim().slice(1);
         const mention = post.mentions.find(m => m.mentionedUser.username === username);
         if (mention) {
           return (
