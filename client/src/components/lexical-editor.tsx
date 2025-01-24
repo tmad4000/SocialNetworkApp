@@ -3,12 +3,17 @@ import {
   $getRoot,
   $createParagraphNode,
   $createTextNode,
+  $isTextNode,
   EditorState,
   TextNode,
   NodeKey,
   LexicalNode,
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
+  SELECTION_CHANGE_COMMAND,
+  $getPreviousSelection,
+  $getSelection,
+  $isRangeSelection,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -41,7 +46,30 @@ export class MentionNode extends TextNode {
     dom.style.fontWeight = '500';
     dom.style.whiteSpace = 'nowrap';
     dom.classList.add('mention');
+    dom.setAttribute('data-mention', this.__mention);
     return dom;
+  }
+
+  // Override isSimpleText to ensure atomic behavior
+  isSimpleText(): boolean {
+    return false;
+  }
+
+  // Override isSegmented to ensure atomic behavior
+  isSegmented(): boolean {
+    return false;
+  }
+
+  // Override selectPrevious for atomic selection
+  selectPrevious(): boolean {
+    this.getParentOrThrow().selectStart();
+    return true;
+  }
+
+  // Override selectNext for atomic selection
+  selectNext(): boolean {
+    this.getParentOrThrow().selectEnd();
+    return true;
   }
 
   // Handle backspace for atomic deletion
@@ -49,6 +77,39 @@ export class MentionNode extends TextNode {
     this.selectPrevious();
     this.remove();
     return true;
+  }
+
+  // Handle delete for atomic deletion
+  deleteNext(): boolean {
+    this.selectNext();
+    this.remove();
+    return true;
+  }
+
+  // Prevent splitting the node
+  splitText(): TextNode {
+    return this;
+  }
+
+  // Custom serialization
+  exportJSON() {
+    return {
+      ...super.exportJSON(),
+      mentionName: this.__mention,
+      type: 'mention',
+      version: 1,
+    };
+  }
+
+  // Custom deserialization
+  static importJSON(serializedNode: any): MentionNode {
+    const node = $createMentionNode(serializedNode.mentionName);
+    node.setTextContent(serializedNode.text);
+    node.setFormat(serializedNode.format);
+    node.setDetail(serializedNode.detail);
+    node.setMode(serializedNode.mode);
+    node.setStyle(serializedNode.style);
+    return node;
   }
 }
 
@@ -76,15 +137,18 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
-    // Register backspace command for atomic deletion
+    // Handle atomic deletion
     const removeBackspaceListener = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       () => {
-        const selection = $getRoot().getSelection();
-        if (selection && selection.anchor.offset === 0) {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection) && selection.isCollapsed()) {
           const node = selection.anchor.getNode();
           if ($isMentionNode(node)) {
-            node.deletePrevious();
+            const parent = node.getParent();
+            if (!parent) return false;
+            node.selectPrevious();
+            node.remove();
             return true;
           }
         }
@@ -93,6 +157,47 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       COMMAND_PRIORITY_CRITICAL,
     );
 
+    // Handle keyboard navigation for suggestions
+    const removeKeyDownListener = editor.registerCommand(
+      'keydown',
+      (event: KeyboardEvent) => {
+        if (!showSuggestions) return false;
+
+        switch (event.key) {
+          case 'ArrowDown': {
+            event.preventDefault();
+            setSelectedIndex((prev) =>
+              prev < filteredUsers.length - 1 ? prev + 1 : prev
+            );
+            return true;
+          }
+          case 'ArrowUp': {
+            event.preventDefault();
+            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
+            return true;
+          }
+          case 'Enter':
+          case 'Tab': {
+            event.preventDefault();
+            if (filteredUsers[selectedIndex]) {
+              insertMention(filteredUsers[selectedIndex].username);
+              return true;
+            }
+            return false;
+          }
+          case 'Escape': {
+            event.preventDefault();
+            setShowSuggestions(false);
+            return true;
+          }
+          default:
+            return false;
+        }
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+
+    // Track text changes for @ mentions
     const removeTextListener = editor.registerTextContentListener((text) => {
       const match = text.match(/@(\w*)$/);
       if (match) {
@@ -104,7 +209,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
         setShowSuggestions(true);
         setSelectedIndex(0);
 
-        // Get the current selection and calculate position
+        // Calculate mention dropdown position
         const selection = window.getSelection();
         if (selection && selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
@@ -125,25 +230,30 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 
     return () => {
       removeTextListener();
+      removeKeyDownListener();
       removeBackspaceListener();
     };
-  }, [editor, users]);
+  }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
 
   const insertMention = (username: string) => {
     editor.update(() => {
-      const root = $getRoot();
-      const textContent = root.getTextContent();
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+
+      const textContent = selection.getTextContent();
       const lastAtPos = textContent.lastIndexOf('@');
+      if (lastAtPos === -1) return;
 
       // Create new nodes
       const mentionNode = $createMentionNode(username);
       const spaceNode = $createTextNode(' ');
 
-      // Get the current paragraph
-      const paragraph = root.getFirstChild();
-      if (!paragraph) return;
+      // Get the current paragraph and selection
+      const anchor = selection.anchor;
+      const currentNode = anchor.getNode();
+      const currentParagraph = currentNode.getParentOrThrow();
 
-      // Remove the @ and any characters after it
+      // Split text at @ symbol and create new paragraph
       const textBeforeMention = textContent.slice(0, lastAtPos);
       const paragraphNode = $createParagraphNode();
       paragraphNode.append($createTextNode(textBeforeMention));
@@ -151,7 +261,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       paragraphNode.append(spaceNode);
 
       // Replace the current paragraph
-      paragraph.replace(paragraphNode);
+      currentParagraph.replace(paragraphNode);
 
       // Set selection after the space
       spaceNode.select();
