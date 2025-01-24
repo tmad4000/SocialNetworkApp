@@ -9,7 +9,6 @@ import {
   LexicalNode,
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
-  COMMAND_PRIORITY_LOW,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -47,7 +46,7 @@ export class MentionNode extends TextNode {
 
   // Handle backspace for atomic deletion
   deletePrevious(): boolean {
-    // Delete the entire mention node when backspace is pressed
+    this.selectPrevious();
     this.remove();
     return true;
   }
@@ -77,11 +76,28 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
+    // Register backspace command for atomic deletion
+    const removeBackspaceListener = editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      (event) => {
+        const selection = editor.getEditorState()._selection;
+        if (selection && selection.anchor.offset === 0) {
+          const node = selection.anchor.getNode();
+          if ($isMentionNode(node)) {
+            node.remove();
+            return true;
+          }
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+
     const removeTextListener = editor.registerTextContentListener((text) => {
       const match = text.match(/@(\w*)$/);
       if (match) {
         const query = match[1];
-        const filtered = users.filter((user) => 
+        const filtered = users.filter((user) =>
           user.username.toLowerCase().includes(query.toLowerCase())
         );
         setFilteredUsers(filtered);
@@ -107,51 +123,11 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       }
     });
 
-    // Register keyboard commands for navigation and selection
-    const removeKeyDownListener = editor.registerCommand(
-      'keydown',
-      (event: any) => {
-        if (!showSuggestions) return false;
-
-        switch (event.key) {
-          case 'ArrowDown': {
-            event.preventDefault();
-            setSelectedIndex((prev) => 
-              prev < filteredUsers.length - 1 ? prev + 1 : prev
-            );
-            return true;
-          }
-          case 'ArrowUp': {
-            event.preventDefault();
-            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
-            return true;
-          }
-          case 'Enter':
-          case 'Tab': {
-            event.preventDefault();
-            if (filteredUsers[selectedIndex]) {
-              insertMention(filteredUsers[selectedIndex].username);
-              return true;
-            }
-            return false;
-          }
-          case 'Escape': {
-            event.preventDefault();
-            setShowSuggestions(false);
-            return true;
-          }
-          default:
-            return false;
-        }
-      },
-      COMMAND_PRIORITY_CRITICAL,
-    );
-
     return () => {
       removeTextListener();
-      removeKeyDownListener();
+      removeBackspaceListener();
     };
-  }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
+  }, [editor, users]);
 
   const insertMention = (username: string) => {
     editor.update(() => {
@@ -181,7 +157,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   };
 
   return showSuggestions ? (
-    <div 
+    <div
       className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
       style={{ top: mentionPosition.top, left: mentionPosition.left }}
     >
