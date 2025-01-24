@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { Loader2, Users, Pencil } from "lucide-react";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
@@ -192,18 +193,26 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {isOwnProfile && (
-        <div className="mb-8">
-          <CreatePost onSuccess={() => {
+      <div className="mb-8">
+        <CreatePost 
+          targetUserId={!isOwnProfile ? user.id : undefined}
+          onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${params?.id}`] });
-          }} />
-        </div>
-      )}
+          }} 
+        />
+      </div>
 
-      <div className="space-y-6">
-        {posts?.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))}
+      <div className="space-y-2">
+        <Separator className="my-8" />
+        <h2 className="text-2xl font-semibold mb-6">Posts</h2>
+        <div className="space-y-6">
+          {posts?.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+          {!posts?.length && (
+            <p className="text-muted-foreground text-center py-8">No posts yet</p>
+          )}
+        </div>
       </div>
     </div>
   );
