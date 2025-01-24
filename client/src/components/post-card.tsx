@@ -31,7 +31,19 @@ export default function PostCard({ post }: PostCardProps) {
             );
           }
         }
-        // If not a mention but contains @, just style it blue
+        // Check if it's an email address
+        if (part.includes('@') && part.includes('.')) {
+          return (
+            <a 
+              key={index} 
+              href={`mailto:${part}`} 
+              className="text-primary hover:underline cursor-pointer"
+            >
+              {part}
+            </a>
+          );
+        }
+        // Any other @ content just gets styled blue
         return (
           <span key={index} className="text-primary">
             {part}
