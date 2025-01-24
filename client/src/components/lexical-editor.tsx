@@ -124,7 +124,6 @@ export function $isMentionNode(node: LexicalNode | null | undefined): boolean {
 }
 
 const theme = {
-  paragraph: "my-2",
   text: {
     base: "text-foreground",
   },
