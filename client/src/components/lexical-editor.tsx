@@ -50,48 +50,40 @@ export class MentionNode extends TextNode {
     return dom;
   }
 
-  // Override isSimpleText to ensure atomic behavior
   isSimpleText(): boolean {
     return false;
   }
 
-  // Override isSegmented to ensure atomic behavior
   isSegmented(): boolean {
     return false;
   }
 
-  // Override selectPrevious for atomic selection
   selectPrevious(): boolean {
     this.getParentOrThrow().selectStart();
     return true;
   }
 
-  // Override selectNext for atomic selection
   selectNext(): boolean {
     this.getParentOrThrow().selectEnd();
     return true;
   }
 
-  // Handle backspace for atomic deletion
   deletePrevious(): boolean {
     this.selectPrevious();
     this.remove();
     return true;
   }
 
-  // Handle delete for atomic deletion
   deleteNext(): boolean {
     this.selectNext();
     this.remove();
     return true;
   }
 
-  // Prevent splitting the node
   splitText(): TextNode {
     return this;
   }
 
-  // Custom serialization
   exportJSON() {
     return {
       ...super.exportJSON(),
@@ -101,7 +93,6 @@ export class MentionNode extends TextNode {
     };
   }
 
-  // Custom deserialization
   static importJSON(serializedNode: any): MentionNode {
     const node = $createMentionNode(serializedNode.mentionName);
     node.setTextContent(serializedNode.text);
