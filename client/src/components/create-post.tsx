@@ -2,18 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -33,7 +21,7 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
   const queryClient = useQueryClient();
 
   const { data: searchResults } = useQuery<User[]>({
-    queryKey: [`/api/users/search`, mentionSearch],
+    queryKey: ["/api/users/search", { query: mentionSearch }],
     enabled: showMentions && mentionSearch.length > 0,
   });
 
@@ -89,8 +77,11 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
       setShowMentions(true);
       setMentionSearch("");
     } else if (showMentions) {
-      const lastWord = newContent.slice(newContent.lastIndexOf('@') + 1).split(/\s/)[0];
-      setMentionSearch(lastWord);
+      // Extract the word after @ symbol
+      const lastWord = newContent.slice(lastAtSymbol + 1).split(/\s/)[0];
+      if (lastWord) {
+        setMentionSearch(lastWord);
+      }
 
       if (newContent[newContent.length - 1] === ' ' || !newContent.includes('@')) {
         setShowMentions(false);
@@ -113,16 +104,15 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
 
   // Helper function to get caret coordinates
   function getCaretCoordinates(element: HTMLTextAreaElement, position: number) {
-    const { offsetHeight: height, offsetWidth: width } = element;
-    const lines = element.value.substr(0, position).split('\n');
+    const { offsetHeight: height } = element;
     const lineHeight = height / element.rows;
-    const currentLine = lines.length;
-    const currentLineLength = lines[lines.length - 1].length;
-    const averageCharWidth = width / element.cols;
+    const linesUpToCaret = element.value.slice(0, position).split('\n');
+    const caretLine = linesUpToCaret.length;
+    const lastLineLength = linesUpToCaret[linesUpToCaret.length - 1].length;
 
     return {
-      top: (currentLine - 1) * lineHeight,
-      left: currentLineLength * averageCharWidth,
+      top: (caretLine - 1) * lineHeight,
+      left: lastLineLength * 8, // Approximate character width
     };
   }
 
@@ -133,7 +123,7 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
           <div className="relative">
             <Textarea
               ref={textareaRef}
-              placeholder="What's on your mind?"
+              placeholder="What's on your mind? Use @ to mention users"
               value={content}
               onChange={handleContentChange}
               className="resize-none"
@@ -141,16 +131,16 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
             />
             {showMentions && (
               <div 
-                className="absolute z-50 w-64 bg-background border rounded-md shadow-lg"
+                className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
                 style={{ top: mentionPosition.top, left: mentionPosition.left }}
               >
-                {searchResults?.length === 0 ? (
+                {!searchResults || searchResults.length === 0 ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    No users found
+                    {mentionSearch.length > 0 ? "No users found" : "Type to search users"}
                   </div>
                 ) : (
                   <div className="p-1">
-                    {searchResults?.map((user) => (
+                    {searchResults.map((user) => (
                       <div
                         key={user.id}
                         className="flex items-center gap-2 p-2 hover:bg-accent rounded-sm cursor-pointer"
