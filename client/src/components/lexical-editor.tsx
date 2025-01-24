@@ -79,12 +79,12 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     // Register backspace command for atomic deletion
     const removeBackspaceListener = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
-      (event) => {
+      () => {
         const selection = $getRoot().getSelection();
         if (selection && selection.anchor.offset === 0) {
           const node = selection.anchor.getNode();
           if ($isMentionNode(node)) {
-            node.remove();
+            node.deletePrevious();
             return true;
           }
         }
@@ -145,10 +145,13 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 
       // Remove the @ and any characters after it
       const textBeforeMention = textContent.slice(0, lastAtPos);
-      paragraph.clear();
-      paragraph.append($createTextNode(textBeforeMention));
-      paragraph.append(mentionNode);
-      paragraph.append(spaceNode);
+      const paragraphNode = $createParagraphNode();
+      paragraphNode.append($createTextNode(textBeforeMention));
+      paragraphNode.append(mentionNode);
+      paragraphNode.append(spaceNode);
+
+      // Replace the current paragraph
+      paragraph.replace(paragraphNode);
 
       // Set selection after the space
       spaceNode.select();
