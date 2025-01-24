@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/hooks/use-user";
+import FriendRequestsMenu from "@/components/friend-requests-menu";
 
 export default function Navbar() {
   const { user, logout } = useUser();
@@ -14,6 +15,7 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-4">
+          <FriendRequestsMenu />
           <Link href={`/profile/${user?.id}`}>
             <Avatar className="h-8 w-8 cursor-pointer">
               <AvatarImage
