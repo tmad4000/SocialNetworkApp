@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   $getRoot,
   $createParagraphNode,
@@ -6,8 +6,6 @@ import {
   EditorState,
   TextNode,
   NodeKey,
-  SerializedTextNode,
-  Spread,
   LexicalNode,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -16,6 +14,7 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Custom MentionNode implementation
 export class MentionNode extends TextNode {
@@ -34,8 +33,8 @@ export class MentionNode extends TextNode {
     this.__mention = mentionName;
   }
 
-  createDOM(): HTMLElement {
-    const dom = super.createDOM();
+  createDOM(config: any): HTMLElement {
+    const dom = super.createDOM(config);
     dom.classList.add('mention');
     return dom;
   }
@@ -57,20 +56,39 @@ const theme = {
   mention: "text-primary font-medium",
 };
 
-function MentionsPlugin({ users }: { users: Array<{ id: number; username: string }> }) {
+function MentionsPlugin({ users }: { users: Array<{ id: number; username: string; avatar: string | null }> }) {
   const [editor] = useLexicalComposerContext();
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredUsers, setFilteredUsers] = useState(users);
+  const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
     const removeListener = editor.registerTextContentListener((text) => {
-      const match = text.match(/@(\w+)$/);
+      const match = text.match(/@(\w*)$/);
       if (match) {
         const query = match[1];
         const filtered = users.filter((user) => 
           user.username.toLowerCase().includes(query.toLowerCase())
         );
+        setFilteredUsers(filtered);
+        setShowSuggestions(true);
 
-        // Show mentions dropdown with filtered users
-        console.log("Filtered users:", filtered);
+        // Get the current selection and calculate position
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const editorElement = editor.getRootElement();
+          if (editorElement) {
+            const editorRect = editorElement.getBoundingClientRect();
+            setMentionPosition({
+              top: rect.bottom - editorRect.top,
+              left: rect.left - editorRect.left,
+            });
+          }
+        }
+      } else {
+        setShowSuggestions(false);
       }
     });
 
@@ -79,13 +97,57 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     };
   }, [editor, users]);
 
-  return null;
+  const onSelectMention = (username: string) => {
+    editor.update(() => {
+      const mention = $createMentionNode(username);
+      const textContent = editor.getEditorState()._nodeMap.get('root').getTextContent();
+      const lastAtPos = textContent.lastIndexOf('@');
+      const selection = editor.getEditorState()._selection;
+      if (selection) {
+        selection.anchor.offset = lastAtPos;
+        selection.focus.offset = textContent.length;
+        selection.extract();
+        mention.select();
+      }
+      mention.insertAfter($createTextNode(' '));
+    });
+    setShowSuggestions(false);
+  };
+
+  return showSuggestions ? (
+    <div 
+      className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+      style={{ top: mentionPosition.top, left: mentionPosition.left }}
+    >
+      {filteredUsers.length === 0 ? (
+        <div className="p-2 text-sm text-muted-foreground">
+          No users found
+        </div>
+      ) : (
+        <div className="p-1">
+          {filteredUsers.map((user) => (
+            <div
+              key={user.id}
+              className="flex items-center gap-2 p-2 hover:bg-accent rounded-sm cursor-pointer"
+              onClick={() => onSelectMention(user.username)}
+            >
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
+                <AvatarFallback>{user.username[0]}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm">{user.username}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
 }
 
 interface LexicalEditorProps {
   onChange?: (text: string) => void;
   initialValue?: string;
-  users: Array<{ id: number; username: string }>;
+  users: Array<{ id: number; username: string; avatar: string | null }>;
 }
 
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
