@@ -210,6 +210,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
+      // First get posts created by the user
       const userPosts = await db.query.posts.findMany({
         where: eq(posts.userId, userId),
         with: {
@@ -232,10 +233,51 @@ export function registerRoutes(app: Express): Server {
             }
           }
         },
-        orderBy: desc(posts.createdAt),
       });
 
-      res.json(userPosts);
+      // Then get posts where the user is mentioned
+      const mentionedPosts = await db.query.postMentions.findMany({
+        where: eq(postMentions.mentionedUserId, userId),
+        with: {
+          post: {
+            with: {
+              user: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              },
+              mentions: {
+                with: {
+                  mentionedUser: {
+                    columns: {
+                      id: true,
+                      username: true,
+                      avatar: true,
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Combine and sort posts
+      const allPosts = [
+        ...userPosts,
+        ...mentionedPosts.map(mention => mention.post)
+      ].sort((a, b) => 
+        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+      );
+
+      // Remove duplicates (in case a user is both creator and mentioned)
+      const uniquePosts = Array.from(
+        new Map(allPosts.map(post => [post.id, post])).values()
+      );
+
+      res.json(uniquePosts);
     } catch (error) {
       console.error('Error fetching user posts:', error);
       res.status(500).json({ message: "Error fetching user posts" });
