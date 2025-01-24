@@ -26,7 +26,6 @@ export default function ProfilePage() {
 
   const { data: friends, isLoading: friendsLoading } = useQuery<Friend[]>({
     queryKey: ["/api/friends"],
-    select: (friends) => friends.filter(f => f.status === 'accepted'),
   });
 
   if (userLoading || postsLoading || friendsLoading) {
@@ -40,21 +39,21 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const isOwnProfile = currentUser?.id === user.id;
-  const friendStatus = friends?.find(
+
+  // Check for any friend request (pending or accepted)
+  const friendRequest = friends?.find(
     f => (f.userId === currentUser?.id && f.friendId === user.id) ||
          (f.userId === user.id && f.friendId === currentUser?.id)
   );
 
-  // Process friends list to get unique friend entries
+  // Process friends list to get unique friend entries (only accepted)
   const acceptedFriends = friends?.reduce<{ id: number; username: string; avatar: string | null }[]>((acc, f) => {
     if (f.status === 'accepted') {
-      // If current user is the friend
       if (f.friendId === user.id) {
-        acc.push(f.user);
+        acc.push({ id: f.user.id, username: f.user.username, avatar: f.user.avatar });
       }
-      // If current user is the requester
       if (f.userId === user.id) {
-        acc.push(f.friend);
+        acc.push({ id: f.friend.id, username: f.friend.username, avatar: f.friend.avatar });
       }
     }
     return acc;
@@ -75,7 +74,7 @@ export default function ProfilePage() {
           </div>
 
           {!isOwnProfile && (
-            <FriendRequest userId={user.id} status={friendStatus?.status} />
+            <FriendRequest userId={user.id} status={friendRequest?.status} />
           )}
         </CardContent>
       </Card>
@@ -88,7 +87,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-semibold">Friends</h2>
           </div>
 
-          {acceptedFriends?.length === 0 ? (
+          {!acceptedFriends?.length ? (
             <p className="text-muted-foreground">No friends yet</p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
