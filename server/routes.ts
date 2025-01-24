@@ -35,6 +35,25 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Get all users for mentions
+  app.get("/api/users", async (req, res) => {
+    try {
+      const allUsers = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .limit(100); // Limit to prevent loading too many users
+
+      res.json(allUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ message: "Error fetching users" });
+    }
+  });
+
   // Update bio
   app.put("/api/user/bio", async (req, res) => {
     if (!req.user) {
