@@ -5,7 +5,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-export default function CreatePost() {
+interface CreatePostProps {
+  onSuccess?: () => void;
+}
+
+export default function CreatePost({ onSuccess }: CreatePostProps) {
   const [content, setContent] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -28,6 +32,7 @@ export default function CreatePost() {
     onSuccess: () => {
       setContent("");
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      onSuccess?.();
       toast({
         title: "Success",
         description: "Post created successfully",
