@@ -7,6 +7,9 @@ import {
   TextNode,
   NodeKey,
   LexicalNode,
+  COMMAND_PRIORITY_CRITICAL,
+  KEY_BACKSPACE_COMMAND,
+  COMMAND_PRIORITY_LOW,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -35,10 +38,18 @@ export class MentionNode extends TextNode {
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
-    dom.classList.add('mention');
     dom.style.color = 'hsl(var(--primary))';
     dom.style.fontWeight = '500';
+    dom.style.whiteSpace = 'nowrap';
+    dom.classList.add('mention');
     return dom;
+  }
+
+  // Handle backspace for atomic deletion
+  deletePrevious(): boolean {
+    // Delete the entire mention node when backspace is pressed
+    this.remove();
+    return true;
   }
 }
 
@@ -96,41 +107,49 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       }
     });
 
-    const removeKeyListener = editor.registerCommand(
+    // Register keyboard commands for navigation and selection
+    const removeKeyDownListener = editor.registerCommand(
       'keydown',
-      (event: KeyboardEvent) => {
+      (event: any) => {
         if (!showSuggestions) return false;
 
         switch (event.key) {
-          case 'ArrowDown':
+          case 'ArrowDown': {
+            event.preventDefault();
             setSelectedIndex((prev) => 
               prev < filteredUsers.length - 1 ? prev + 1 : prev
             );
             return true;
-          case 'ArrowUp':
+          }
+          case 'ArrowUp': {
+            event.preventDefault();
             setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
             return true;
+          }
           case 'Enter':
-          case 'Tab':
+          case 'Tab': {
+            event.preventDefault();
             if (filteredUsers[selectedIndex]) {
-              event.preventDefault();
               insertMention(filteredUsers[selectedIndex].username);
               return true;
             }
             return false;
-          case 'Escape':
+          }
+          case 'Escape': {
+            event.preventDefault();
             setShowSuggestions(false);
             return true;
+          }
           default:
             return false;
         }
       },
-      1
+      COMMAND_PRIORITY_CRITICAL,
     );
 
     return () => {
       removeTextListener();
-      removeKeyListener();
+      removeKeyDownListener();
     };
   }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
 
