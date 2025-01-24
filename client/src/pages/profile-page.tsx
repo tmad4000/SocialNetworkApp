@@ -193,18 +193,17 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <div className="mb-8">
+      <div className="space-y-6">
+        <Separator className="my-8" />
+        <h2 className="text-2xl font-semibold">Posts</h2>
+
         <CreatePost 
           targetUserId={!isOwnProfile ? user.id : undefined}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${params?.id}`] });
           }} 
         />
-      </div>
 
-      <div className="space-y-2">
-        <Separator className="my-8" />
-        <h2 className="text-2xl font-semibold mb-6">Posts</h2>
         <div className="space-y-6">
           {posts?.map((post) => (
             <PostCard key={post.id} post={post} />
