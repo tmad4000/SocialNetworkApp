@@ -14,6 +14,8 @@ import {
   $getSelection,
   $isRangeSelection,
   $createRangeSelection,
+  RangeSelection,
+  LexicalCommand,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -40,7 +42,7 @@ export class MentionNode extends TextNode {
     this.__mention = mentionName;
   }
 
-  createDOM(config: any): HTMLElement {
+  createDOM(config: Record<string, any>): HTMLElement {
     const dom = super.createDOM(config);
     dom.style.color = 'hsl(var(--primary))';
     dom.style.fontWeight = '500';
@@ -63,16 +65,16 @@ export class MentionNode extends TextNode {
   // Override selectPrevious for atomic selection
   selectPrevious(anchorOffset?: number, focusOffset?: number): RangeSelection {
     const selection = $createRangeSelection();
-    const parent = this.getParentOrThrow();
-    parent.selectStart(selection);
+    selection.anchor.set(this.getKey(), 0, 'text');
+    selection.focus.set(this.getKey(), 0, 'text');
     return selection;
   }
 
   // Override selectNext for atomic selection
   selectNext(anchorOffset?: number, focusOffset?: number): RangeSelection {
     const selection = $createRangeSelection();
-    const parent = this.getParentOrThrow();
-    parent.selectEnd(selection);
+    selection.anchor.set(this.getKey(), this.getTextContentSize(), 'text');
+    selection.focus.set(this.getKey(), this.getTextContentSize(), 'text');
     return selection;
   }
 
@@ -162,8 +164,12 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     );
 
     // Handle keyboard navigation for suggestions
+    const keyDownCommand: LexicalCommand<KeyboardEvent> = {
+      type: 'keydown',
+    };
+
     const removeKeyDownListener = editor.registerCommand(
-      'keydown',
+      keyDownCommand,
       (event: KeyboardEvent) => {
         if (!showSuggestions) return false;
 
