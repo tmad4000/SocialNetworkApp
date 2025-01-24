@@ -8,6 +8,33 @@ import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Search users for mentions
+  app.get("/api/users/search", async (req, res) => {
+    const { query } = req.query;
+    if (!query || typeof query !== "string") {
+      return res.status(400).send("Search query is required");
+    }
+
+    try {
+      console.log('Searching users with query:', query);
+      const searchResults = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(ilike(users.username, `%${query}%`))
+        .limit(10);
+
+      console.log('Search results:', searchResults);
+      res.json(searchResults);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      res.status(500).json({ message: "Error searching users" });
+    }
+  });
+
   // Update bio
   app.put("/api/user/bio", async (req, res) => {
     if (!req.user) {
@@ -28,30 +55,6 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedUser);
   });
 
-  // Search users for mentions
-  app.get("/api/users/search", async (req, res) => {
-    const { query } = req.query;
-    if (!query || typeof query !== "string") {
-      return res.status(400).send("Search query is required");
-    }
-
-    try {
-      const searchResults = await db
-        .select({
-          id: users.id,
-          username: users.username,
-          avatar: users.avatar,
-        })
-        .from(users)
-        .where(ilike(users.username, `%${query}%`))
-        .limit(10);
-
-      res.json(searchResults);
-    } catch (error) {
-      console.error('Error searching users:', error);
-      res.status(500).json({ message: "Error searching users" });
-    }
-  });
 
   // Posts with mentions
   app.get("/api/posts", async (req, res) => {
