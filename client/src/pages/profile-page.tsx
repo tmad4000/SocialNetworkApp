@@ -17,6 +17,19 @@ import { useState } from "react";
 import { SiLinkedin } from "react-icons/si";
 import { Input } from "@/components/ui/input";
 
+type FriendWithRelations = Friend & {
+    user: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
+    friend: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
+  };
+
 export default function ProfilePage() {
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingLinkedIn, setIsEditingLinkedIn] = useState(false);
@@ -102,7 +115,7 @@ export default function ProfilePage() {
     queryKey: [`/api/posts/user/${params?.id}`],
   });
 
-  const { data: friends, isLoading: friendsLoading } = useQuery<Friend[]>({
+  const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
   });
 
@@ -149,11 +162,14 @@ export default function ProfilePage() {
     avatar: string | null;
   }[]>((acc, f) => {
     if (f.status === "accepted") {
-      if (f.friendId === user.id) {
-        acc.push({ id: f.user.id, username: f.user.username, avatar: f.user.avatar });
-      }
-      if (f.userId === user.id) {
-        acc.push({ id: f.friend.id, username: f.friend.username, avatar: f.friend.avatar });
+      // Get the other user's info (either from user or friend field)
+      const otherUser = f.userId === user?.id ? f.friend : f.user;
+      if (otherUser) {
+        acc.push({
+          id: otherUser.id,
+          username: otherUser.username,
+          avatar: otherUser.avatar,
+        });
       }
     }
     return acc;
