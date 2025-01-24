@@ -10,7 +10,7 @@ import CreatePost from "@/components/create-post";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Post, Friend } from "@db/schema";
+import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import { useState } from "react";
 
@@ -58,7 +58,10 @@ export default function ProfilePage() {
     },
   });
 
-  const { data: posts, isLoading: postsLoading } = useQuery<(Post & { user: User })[]>({
+  const { data: posts, isLoading: postsLoading } = useQuery<(Post & { 
+    user: User;
+    mentions: (PostMention & { mentionedUser: User })[];
+  })[]>({
     queryKey: [`/api/posts/user/${params?.id}`],
   });
 
