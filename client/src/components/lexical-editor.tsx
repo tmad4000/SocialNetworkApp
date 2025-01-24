@@ -174,7 +174,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   }, [editor, users, showSuggestions]);
 
   useEffect(() => {
-    const removeKeyDownListener = editor.registerCommand(
+    const removeBackspaceListener = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       () => {
         const selection = $getSelection();
@@ -194,47 +194,49 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     );
 
     return () => {
-      removeKeyDownListener();
+      removeBackspaceListener();
     };
   }, [editor]);
 
   useEffect(() => {
-    const removeKeyDownListener = editor.registerCommand(
-      "keydown" as any,
-      (event: KeyboardEvent) => {
-        if (!showSuggestions) return false;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!showSuggestions || !filteredUsers.length) return false;
 
-        switch (event.key) {
-          case 'ArrowDown': {
-            event.preventDefault();
-            setSelectedIndex((prev) =>
-              prev < filteredUsers.length - 1 ? prev + 1 : prev
-            );
-            return true;
-          }
-          case 'ArrowUp': {
-            event.preventDefault();
-            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
-            return true;
-          }
-          case 'Enter':
-          case 'Tab': {
-            event.preventDefault();
-            if (filteredUsers[selectedIndex]) {
-              insertMention(filteredUsers[selectedIndex].username);
-              return true;
-            }
-            return false;
-          }
-          case 'Escape': {
-            event.preventDefault();
-            setShowSuggestions(false);
-            return true;
-          }
-          default:
-            return false;
+      switch (event.key) {
+        case 'ArrowDown': {
+          event.preventDefault();
+          setSelectedIndex((prev) =>
+            prev < filteredUsers.length - 1 ? prev + 1 : prev
+          );
+          return true;
         }
-      },
+        case 'ArrowUp': {
+          event.preventDefault();
+          setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
+          return true;
+        }
+        case 'Enter':
+        case 'Tab': {
+          event.preventDefault();
+          if (filteredUsers[selectedIndex]) {
+            insertMention(filteredUsers[selectedIndex].username);
+            return true;
+          }
+          return false;
+        }
+        case 'Escape': {
+          event.preventDefault();
+          setShowSuggestions(false);
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    const removeKeyDownListener = editor.registerCommand(
+      "keydown",
+      handleKeyDown,
       COMMAND_PRIORITY_CRITICAL,
     );
 
