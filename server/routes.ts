@@ -52,35 +52,36 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/posts", async (req, res) => {
     const userId = req.user?.id;
 
-    // Get posts that either:
-    // 1. Are from users the current user follows
-    // 2. Mention the current user
-    // 3. Are created by the current user
-    const allPosts = await db.query.posts.findMany({
-      with: {
-        user: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
+    try {
+      const allPosts = await db.query.posts.findMany({
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
           },
-        },
-        mentions: {
-          with: {
-            mentionedUser: {
-              columns: {
-                id: true,
-                username: true,
-                avatar: true,
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
               }
             }
           }
-        }
-      },
-      orderBy: desc(posts.createdAt),
-    });
+        },
+        orderBy: desc(posts.createdAt),
+      });
 
-    res.json(allPosts);
+      res.json(allPosts);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      res.status(500).json({ message: "Error fetching posts" });
+    }
   });
 
   app.post("/api/posts", async (req, res) => {
@@ -181,21 +182,37 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Invalid user ID");
     }
 
-    const userPosts = await db.query.posts.findMany({
-      where: eq(posts.userId, userId),
-      with: {
-        user: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
+    try {
+      const userPosts = await db.query.posts.findMany({
+        where: eq(posts.userId, userId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
           },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          }
         },
-      },
-      orderBy: desc(posts.createdAt),
-    });
+        orderBy: desc(posts.createdAt),
+      });
 
-    res.json(userPosts);
+      res.json(userPosts);
+    } catch (error) {
+      console.error('Error fetching user posts:', error);
+      res.status(500).json({ message: "Error fetching user posts" });
+    }
   });
 
 
