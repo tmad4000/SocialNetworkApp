@@ -8,9 +8,10 @@ import LexicalEditor from "./lexical-editor";
 
 interface CreatePostProps {
   onSuccess?: () => void;
+  targetUserId?: number; // Add this prop for posting on other users' timelines
 }
 
-export default function CreatePost({ onSuccess }: CreatePostProps) {
+export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps) {
   const [content, setContent] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -25,7 +26,7 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, targetUserId }), // Include targetUserId in the request
         credentials: "include",
       });
 
@@ -38,6 +39,9 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
     onSuccess: () => {
       setContent("");
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      if (targetUserId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
+      }
       onSuccess?.();
       toast({
         title: "Success",
@@ -66,6 +70,7 @@ export default function CreatePost({ onSuccess }: CreatePostProps) {
           <LexicalEditor
             onChange={setContent}
             users={users || []}
+            placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
           />
           <div className="flex justify-end">
             <Button

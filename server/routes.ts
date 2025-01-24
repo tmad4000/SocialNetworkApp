@@ -116,9 +116,20 @@ export function registerRoutes(app: Express): Server {
       return res.status(401).send("Not authenticated");
     }
 
-    const { content } = req.body;
+    const { content, targetUserId } = req.body;
     if (!content) {
       return res.status(400).send("Content is required");
+    }
+
+    // If targetUserId is provided, verify it exists
+    if (targetUserId) {
+      const targetUser = await db.query.users.findFirst({
+        where: eq(users.id, targetUserId),
+      });
+
+      if (!targetUser) {
+        return res.status(400).send("Target user not found");
+      }
     }
 
     // Extract mentions from content using regex
@@ -140,13 +151,23 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     // Create mentions
-    if (mentionedUsers.length > 0) {
-      await db.insert(postMentions).values(
-        mentionedUsers.map(user => ({
-          postId: newPost.id,
-          mentionedUserId: user.id,
-        }))
-      );
+    const mentionsToCreate = [
+      ...mentionedUsers.map(user => ({
+        postId: newPost.id,
+        mentionedUserId: user.id,
+      }))
+    ];
+
+    // If posting on someone's timeline, add them as a mention
+    if (targetUserId && targetUserId !== req.user.id) {
+      mentionsToCreate.push({
+        postId: newPost.id,
+        mentionedUserId: targetUserId,
+      });
+    }
+
+    if (mentionsToCreate.length > 0) {
+      await db.insert(postMentions).values(mentionsToCreate);
     }
 
     // Return post with mentions
@@ -268,7 +289,7 @@ export function registerRoutes(app: Express): Server {
       const allPosts = [
         ...userPosts,
         ...mentionedPosts.map(mention => mention.post)
-      ].sort((a, b) => 
+      ].sort((a, b) =>
         (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
       );
 
