@@ -334,11 +334,11 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
-              className="min-h-[100px] outline-none px-3 pt-[8px] pb-2"
+              className="min-h-[100px] outline-none px-3 leading-[1.5] pt-3"
             />
           }
           placeholder={
-            <div className="absolute top-[8px] left-3 text-muted-foreground pointer-events-none">
+            <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
               {placeholder || "What's on your mind? Use @ to mention users"}
             </div>
           }
