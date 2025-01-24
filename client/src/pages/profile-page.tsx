@@ -1,18 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import PostCard from "@/components/post-card";
+import CreatePost from "@/components/create-post";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import type { User, Post, Friend } from "@db/schema";
 
 export default function ProfilePage() {
+  const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
   const { user: currentUser } = useUser();
-  
+
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: [`/api/user/${params?.id}`],
   });
@@ -49,7 +51,7 @@ export default function ProfilePage() {
             <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
             <AvatarFallback>{user.username[0]}</AvatarFallback>
           </Avatar>
-          
+
           <div className="flex-1">
             <h1 className="text-2xl font-bold">{user.username}</h1>
             <p className="text-muted-foreground">{user.bio || "No bio yet"}</p>
@@ -60,6 +62,14 @@ export default function ProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      {isOwnProfile && (
+        <div className="mb-8">
+          <CreatePost onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${params?.id}`] });
+          }} />
+        </div>
+      )}
 
       <div className="space-y-6">
         {posts?.map((post) => (
