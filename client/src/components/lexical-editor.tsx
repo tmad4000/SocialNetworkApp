@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useState, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useState } from "react";
 import {
   $getRoot,
+  $createParagraphNode,
   $createTextNode,
-  $getSelection,
-  $isRangeSelection,
-  COMMAND_PRIORITY_LOW,
-  KEY_ARROW_DOWN_COMMAND,
-  KEY_ARROW_UP_COMMAND,
-  KEY_ENTER_COMMAND,
-  KEY_ESCAPE_COMMAND,
-  KEY_TAB_COMMAND,
+  $isTextNode,
+  EditorState,
   TextNode,
   NodeKey,
-  DecoratorNode,
-  EditorState,
+  LexicalNode,
+  COMMAND_PRIORITY_CRITICAL,
+  KEY_BACKSPACE_COMMAND,
+  SELECTION_CHANGE_COMMAND,
+  $getPreviousSelection,
+  $getSelection,
+  $isRangeSelection,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -24,240 +23,283 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-class MentionNode extends DecoratorNode<JSX.Element> {
+// Custom MentionNode implementation
+export class MentionNode extends TextNode {
   __mention: string;
-  __username: string;
-  __link: string | null;
 
   static getType(): string {
     return 'mention';
   }
 
   static clone(node: MentionNode): MentionNode {
-    return new MentionNode(
-      node.__mention,
-      node.__username,
-      node.__link,
-      node.__key
-    );
+    return new MentionNode(node.__mention, node.__text, node.__key);
   }
 
-  constructor(mention: string, username: string, link: string | null = null, key?: NodeKey) {
-    super(key);
-    this.__mention = mention;
-    this.__username = username;
-    this.__link = link;
+  constructor(mentionName: string, text?: string, key?: NodeKey) {
+    super(text ?? `@${mentionName}`, key);
+    this.__mention = mentionName;
   }
 
-  createDOM(): HTMLElement {
-    const dom = document.createElement('span');
-    dom.className = 'mention';
+  createDOM(config: any): HTMLElement {
+    const dom = super.createDOM(config);
+    dom.style.color = 'hsl(var(--primary))';
+    dom.style.fontWeight = '500';
+    dom.style.whiteSpace = 'nowrap';
+    dom.classList.add('mention');
     dom.setAttribute('data-mention', this.__mention);
     return dom;
   }
 
-  updateDOM(): false {
+  // Override isSimpleText to ensure atomic behavior
+  isSimpleText(): boolean {
     return false;
   }
 
-  decorate(): JSX.Element {
-    return (
-      <a
-        href={this.__link || undefined}
-        className="inline-flex items-center gap-1 text-primary font-medium hover:underline"
-      >
-        <Avatar className="h-4 w-4">
-          <AvatarImage src={`https://api.dicebear.com/7.x/avatars/svg?seed=${this.__username}`} />
-          <AvatarFallback>{this.__username[0]}</AvatarFallback>
-        </Avatar>
-        @{this.__mention}
-      </a>
-    );
+  // Override isSegmented to ensure atomic behavior
+  isSegmented(): boolean {
+    return false;
+  }
+
+  // Override selectPrevious for atomic selection
+  selectPrevious(): boolean {
+    this.getParentOrThrow().selectStart();
+    return true;
+  }
+
+  // Override selectNext for atomic selection
+  selectNext(): boolean {
+    this.getParentOrThrow().selectEnd();
+    return true;
+  }
+
+  // Handle backspace for atomic deletion
+  deletePrevious(): boolean {
+    this.selectPrevious();
+    this.remove();
+    return true;
+  }
+
+  // Handle delete for atomic deletion
+  deleteNext(): boolean {
+    this.selectNext();
+    this.remove();
+    return true;
+  }
+
+  // Prevent splitting the node
+  splitText(): TextNode {
+    return this;
+  }
+
+  // Custom serialization
+  exportJSON() {
+    return {
+      ...super.exportJSON(),
+      mentionName: this.__mention,
+      type: 'mention',
+      version: 1,
+    };
+  }
+
+  // Custom deserialization
+  static importJSON(serializedNode: any): MentionNode {
+    const node = $createMentionNode(serializedNode.mentionName);
+    node.setTextContent(serializedNode.text);
+    node.setFormat(serializedNode.format);
+    node.setDetail(serializedNode.detail);
+    node.setMode(serializedNode.mode);
+    node.setStyle(serializedNode.style);
+    return node;
   }
 }
 
+export function $createMentionNode(mentionName: string): MentionNode {
+  return new MentionNode(mentionName);
+}
+
+export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNode {
+  return node instanceof MentionNode;
+}
+
+const theme = {
+  paragraph: "my-2",
+  text: {
+    base: "text-foreground",
+  },
+  mention: "text-primary font-medium",
+};
+
 function MentionsPlugin({ users }: { users: Array<{ id: number; username: string; avatar: string | null }> }) {
   const [editor] = useLexicalComposerContext();
-  const [queryString, setQueryString] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<typeof users>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredUsers, setFilteredUsers] = useState(users);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const popupRef = useRef<HTMLDivElement>(null);
-
-  const getQueryString = useCallback((text: string): string | null => {
-    const match = /@(\w+)$/.exec(text);
-    return match?.[1] ?? null;
-  }, []);
+  const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
-    if (queryString === null) {
-      setSuggestions([]);
-      return;
-    }
-
-    const filtered = users.filter((user) =>
-      user.username.toLowerCase().includes(queryString.toLowerCase())
-    );
-    setSuggestions(filtered);
-    setSelectedIndex(0);
-  }, [queryString, users]);
-
-  useEffect(() => {
-    const removeListener = editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(() => {
+    // Handle atomic deletion
+    const removeBackspaceListener = editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      () => {
         const selection = $getSelection();
-        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-          setQueryString(null);
-          return;
+        if ($isRangeSelection(selection) && selection.isCollapsed()) {
+          const node = selection.anchor.getNode();
+          if ($isMentionNode(node)) {
+            const parent = node.getParent();
+            if (!parent) return false;
+            node.selectPrevious();
+            node.remove();
+            return true;
+          }
         }
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
 
-        const anchor = selection.anchor;
-        const node = anchor.getNode();
-        if (!node) return;
+    // Handle keyboard navigation for suggestions
+    const removeKeyDownListener = editor.registerCommand(
+      'keydown',
+      (event: KeyboardEvent) => {
+        if (!showSuggestions) return false;
 
-        const textContent = node instanceof TextNode ? node.getTextContent() : '';
-        const currentQuery = getQueryString(textContent);
-        setQueryString(currentQuery);
-      });
+        switch (event.key) {
+          case 'ArrowDown': {
+            event.preventDefault();
+            setSelectedIndex((prev) =>
+              prev < filteredUsers.length - 1 ? prev + 1 : prev
+            );
+            return true;
+          }
+          case 'ArrowUp': {
+            event.preventDefault();
+            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
+            return true;
+          }
+          case 'Enter':
+          case 'Tab': {
+            event.preventDefault();
+            if (filteredUsers[selectedIndex]) {
+              insertMention(filteredUsers[selectedIndex].username);
+              return true;
+            }
+            return false;
+          }
+          case 'Escape': {
+            event.preventDefault();
+            setShowSuggestions(false);
+            return true;
+          }
+          default:
+            return false;
+        }
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+
+    // Track text changes for @ mentions
+    const removeTextListener = editor.registerTextContentListener((text) => {
+      const match = text.match(/@(\w*)$/);
+      if (match) {
+        const query = match[1];
+        const filtered = users.filter((user) =>
+          user.username.toLowerCase().includes(query.toLowerCase())
+        );
+        setFilteredUsers(filtered);
+        setShowSuggestions(true);
+        setSelectedIndex(0);
+
+        // Calculate mention dropdown position
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const editorElement = editor.getRootElement();
+          if (editorElement) {
+            const editorRect = editorElement.getBoundingClientRect();
+            setMentionPosition({
+              top: rect.bottom - editorRect.top,
+              left: rect.left - editorRect.left,
+            });
+          }
+        }
+      } else {
+        setShowSuggestions(false);
+      }
     });
 
     return () => {
-      removeListener();
+      removeTextListener();
+      removeKeyDownListener();
+      removeBackspaceListener();
     };
-  }, [editor, getQueryString]);
+  }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
 
-  useEffect(() => {
-    const handleArrowKeys = (event: KeyboardEvent, command: string): boolean => {
-      if (suggestions.length === 0) return false;
+  const insertMention = (username: string) => {
+    editor.update(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
 
-      if (command === KEY_ARROW_UP_COMMAND) {
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
-        return true;
-      }
+      const textContent = selection.getTextContent();
+      const lastAtPos = textContent.lastIndexOf('@');
+      if (lastAtPos === -1) return;
 
-      if (command === KEY_ARROW_DOWN_COMMAND) {
-        setSelectedIndex((prev) =>
-          prev < suggestions.length - 1 ? prev + 1 : prev
-        );
-        return true;
-      }
+      // Create new nodes
+      const mentionNode = $createMentionNode(username);
+      const spaceNode = $createTextNode(' ');
 
-      return false;
-    };
+      // Get the current paragraph and selection
+      const anchor = selection.anchor;
+      const currentNode = anchor.getNode();
+      const currentParagraph = currentNode.getParentOrThrow();
 
-    const handleEnterOrTab = (event: KeyboardEvent): boolean => {
-      if (suggestions.length === 0) return false;
+      // Split text at @ symbol and create new paragraph
+      const textBeforeMention = textContent.slice(0, lastAtPos);
+      const paragraphNode = $createParagraphNode();
+      paragraphNode.append($createTextNode(textBeforeMention));
+      paragraphNode.append(mentionNode);
+      paragraphNode.append(spaceNode);
 
-      event.preventDefault();
-      const selectedUser = suggestions[selectedIndex];
-      if (!selectedUser) return true;
+      // Replace the current paragraph
+      currentParagraph.replace(paragraphNode);
 
-      editor.update(() => {
-        const selection = $getSelection();
-        if (!$isRangeSelection(selection)) return;
+      // Set selection after the space
+      spaceNode.select();
+    });
+    setShowSuggestions(false);
+  };
 
-        const anchor = selection.anchor;
-        const currentNode = anchor.getNode();
-        if (!(currentNode instanceof TextNode)) return;
-
-        const textContent = currentNode.getTextContent();
-        const mentionIndex = textContent.lastIndexOf('@');
-        if (mentionIndex === -1) return;
-
-        const nodesToReplace = [];
-        if (mentionIndex > 0) {
-          nodesToReplace.push($createTextNode(textContent.slice(0, mentionIndex)));
-        }
-
-        const mentionNode = new MentionNode(
-          selectedUser.username,
-          selectedUser.username,
-          `/profile/${selectedUser.id}`
-        );
-        nodesToReplace.push(mentionNode);
-        nodesToReplace.push($createTextNode(' '));
-
-        const parent = currentNode.getParent();
-        if (!parent) return;
-
-        currentNode.replace(nodesToReplace[0]);
-        let lastNode = nodesToReplace[0];
-        for (let i = 1; i < nodesToReplace.length; i++) {
-          lastNode.insertAfter(nodesToReplace[i]);
-          lastNode = nodesToReplace[i];
-        }
-        lastNode.select();
-      });
-
-      setQueryString(null);
-      return true;
-    };
-
-    return editor.registerCommand(
-      KEY_ARROW_UP_COMMAND,
-      (event) => handleArrowKeys(event, KEY_ARROW_UP_COMMAND),
-      COMMAND_PRIORITY_LOW
-    )
-      && editor.registerCommand(
-        KEY_ARROW_DOWN_COMMAND,
-        (event) => handleArrowKeys(event, KEY_ARROW_DOWN_COMMAND),
-        COMMAND_PRIORITY_LOW
-      )
-      && editor.registerCommand(
-        KEY_ENTER_COMMAND,
-        handleEnterOrTab,
-        COMMAND_PRIORITY_LOW
-      )
-      && editor.registerCommand(
-        KEY_TAB_COMMAND,
-        handleEnterOrTab,
-        COMMAND_PRIORITY_LOW
-      )
-      && editor.registerCommand(
-        KEY_ESCAPE_COMMAND,
-        () => {
-          setQueryString(null);
-          return true;
-        },
-        COMMAND_PRIORITY_LOW
-      );
-  }, [editor, suggestions, selectedIndex]);
-
-  return queryString === null || suggestions.length === 0
-    ? null
-    : createPortal(
-        <div
-          ref={popupRef}
-          className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
-          style={{
-            bottom: "100%",
-            left: 0,
-            marginBottom: "8px",
-          }}
-        >
-          <div className="p-1">
-            {suggestions.map((user, index) => (
-              <div
-                key={user.id}
-                className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
-                  index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
-                }`}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => {
-                  const event = new KeyboardEvent('keydown', { key: 'Enter' });
-                  handleEnterOrTab(event);
-                }}
-              >
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
-                  <AvatarFallback>{user.username[0]}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm">{user.username}</span>
-              </div>
-            ))}
-          </div>
-        </div>,
-        document.body
-      );
+  return showSuggestions ? (
+    <div
+      className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+      style={{ top: mentionPosition.top, left: mentionPosition.left }}
+    >
+      {filteredUsers.length === 0 ? (
+        <div className="p-2 text-sm text-muted-foreground">
+          No users found
+        </div>
+      ) : (
+        <div className="p-1">
+          {filteredUsers.map((user, index) => (
+            <div
+              key={user.id}
+              className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
+                index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
+              }`}
+              onClick={() => insertMention(user.username)}
+              onMouseEnter={() => setSelectedIndex(index)}
+            >
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
+                <AvatarFallback>{user.username[0]}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm">{user.username}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
 }
 
 interface LexicalEditorProps {
@@ -281,13 +323,7 @@ export default function LexicalEditor({ onChange, initialValue = "", users }: Le
 
   const initialConfig = {
     namespace: "SocialPostEditor",
-    theme: {
-      paragraph: "my-2",
-      text: {
-        base: "text-foreground",
-      },
-      mention: "text-primary font-medium",
-    },
+    theme,
     onError: console.error,
     nodes: [MentionNode],
   };
