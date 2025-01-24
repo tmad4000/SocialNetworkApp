@@ -31,7 +31,7 @@ export default function PostCard({ post }: PostCardProps) {
             );
           }
         }
-        // For email addresses or any other @ content, extract the username
+        // For email addresses, extract the username part
         const username = part.split('@')[0];
         const mention = post.mentions.find(m => m.mentionedUser.username === username);
         if (mention) {
