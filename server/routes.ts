@@ -8,6 +8,61 @@ import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add new LinkedIn URL update endpoint
+  app.put("/api/user/linkedin", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { linkedinUrl } = req.body;
+    if (typeof linkedinUrl !== "string") {
+      return res.status(400).send("LinkedIn URL must be a string");
+    }
+
+    // Basic URL validation
+    try {
+      if (linkedinUrl && !linkedinUrl.startsWith('https://www.linkedin.com/')) {
+        return res.status(400).send("Invalid LinkedIn URL format");
+      }
+    } catch (error) {
+      return res.status(400).send("Invalid URL format");
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ linkedinUrl })
+      .where(eq(users.id, req.user.id))
+      .returning();
+
+    res.json(updatedUser);
+  });
+
+  // Update user profile endpoint to include linkedinUrl
+  app.get("/api/user/:id", async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: {
+        id: true,
+        username: true,
+        avatar: true,
+        bio: true,
+        linkedinUrl: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).send("User not found");
+    }
+
+    res.json(user);
+  });
+
   // Search users for mentions
   app.get("/api/users/search", async (req, res) => {
     const { query } = req.query;
@@ -212,6 +267,7 @@ export function registerRoutes(app: Express): Server {
         username: true,
         avatar: true,
         bio: true,
+        linkedinUrl: true,
         createdAt: true,
       },
     });
