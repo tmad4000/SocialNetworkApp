@@ -8,6 +8,26 @@ import { eq, desc, and, or } from "drizzle-orm";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Update bio
+  app.put("/api/user/bio", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { bio } = req.body;
+    if (typeof bio !== "string") {
+      return res.status(400).send("Bio must be a string");
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ bio })
+      .where(eq(users.id, req.user.id))
+      .returning();
+
+    res.json(updatedUser);
+  });
+
   // User profile
   app.get("/api/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
