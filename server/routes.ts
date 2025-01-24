@@ -2,16 +2,73 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, friends, users } from "@db/schema";
-import { eq, and, or, desc } from "drizzle-orm";
+import { posts, users } from "@db/schema";
+import { eq, desc } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // User profile
+  app.get("/api/user/:id", async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: {
+        id: true,
+        username: true,
+        avatar: true,
+        bio: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).send("User not found");
+    }
+
+    res.json(user);
+  });
+
+  // User posts
+  app.get("/api/posts/user/:id", async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    const userPosts = await db.query.posts.findMany({
+      where: eq(posts.userId, userId),
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
+      orderBy: desc(posts.createdAt),
+    });
+
+    res.json(userPosts);
+  });
+
   // Posts
   app.get("/api/posts", async (req, res) => {
     const allPosts = await db.query.posts.findMany({
-      with: { user: true },
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
       orderBy: desc(posts.createdAt),
     });
     res.json(allPosts);
