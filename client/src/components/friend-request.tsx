@@ -27,7 +27,9 @@ export default function FriendRequest({ userId, status }: FriendRequestProps) {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate both friends and users queries to update the UI
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
         title: "Success",
         description: "Friend request sent",
