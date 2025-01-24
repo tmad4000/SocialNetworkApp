@@ -373,8 +373,20 @@ export function registerRoutes(app: Express): Server {
         eq(friends.friendId, req.user.id)
       ),
       with: {
-        user: true,
-        friend: true,
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          }
+        },
+        friend: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          }
+        },
       },
     });
 
