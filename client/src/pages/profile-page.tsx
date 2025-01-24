@@ -14,10 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import { useState } from "react";
+import { SiLinkedin } from "react-icons/si";
+import { Input } from "@/components/ui/input";
 
 export default function ProfilePage() {
   const [isEditingBio, setIsEditingBio] = useState(false);
+  const [isEditingLinkedIn, setIsEditingLinkedIn] = useState(false);
   const [newBio, setNewBio] = useState("");
+  const [newLinkedInUrl, setNewLinkedInUrl] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -59,7 +63,39 @@ export default function ProfilePage() {
     },
   });
 
-  const { data: posts, isLoading: postsLoading } = useQuery<(Post & { 
+  const updateLinkedInUrl = useMutation({
+    mutationFn: async (linkedinUrl: string) => {
+      const res = await fetch("/api/user/linkedin", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkedinUrl }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsEditingLinkedIn(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
+      toast({
+        title: "Success",
+        description: "LinkedIn URL updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
+  const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
   })[]>({
@@ -82,8 +118,9 @@ export default function ProfilePage() {
 
   const isOwnProfile = currentUser?.id === user.id;
   const friendRequest = friends?.find(
-    f => (f.userId === currentUser?.id && f.friendId === user.id) ||
-         (f.userId === user.id && f.friendId === currentUser?.id)
+    (f) =>
+      (f.userId === currentUser?.id && f.friendId === user.id) ||
+      (f.userId === user.id && f.friendId === currentUser?.id)
   );
 
   const handleStartEdit = () => {
@@ -96,8 +133,22 @@ export default function ProfilePage() {
     updateBio.mutate(newBio);
   };
 
-  const acceptedFriends = friends?.reduce<{ id: number; username: string; avatar: string | null }[]>((acc, f) => {
-    if (f.status === 'accepted') {
+  const handleStartEditLinkedIn = () => {
+    setNewLinkedInUrl(user?.linkedinUrl || "");
+    setIsEditingLinkedIn(true);
+  };
+
+  const handleSaveLinkedIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateLinkedInUrl.mutate(newLinkedInUrl);
+  };
+
+  const acceptedFriends = friends?.reduce<{
+    id: number;
+    username: string;
+    avatar: string | null;
+  }[]>((acc, f) => {
+    if (f.status === "accepted") {
       if (f.friendId === user.id) {
         acc.push({ id: f.user.id, username: f.user.username, avatar: f.user.avatar });
       }
@@ -111,18 +162,18 @@ export default function ProfilePage() {
   return (
     <div className="max-w-4xl mx-auto">
       <Card className="mb-8">
-        <CardContent className="flex items-center gap-6 p-6">
-          <Avatar className="h-24 w-24">
-            <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
-            <AvatarFallback>{user.username[0]}</AvatarFallback>
+        <CardContent className="flex items-start gap-6 p-6">
+          <Avatar className="h-24 w-24 flex-shrink-0">
+            <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user?.username}`} />
+            <AvatarFallback>{user?.username[0]}</AvatarFallback>
           </Avatar>
 
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">{user.username}</h1>
+          <div className="flex-1 space-y-4">
+            <h1 className="text-2xl font-bold">{user?.username}</h1>
 
             {isEditingBio ? (
-              <form onSubmit={handleSaveBio} className="mt-2 space-y-2">
-                <Textarea 
+              <form onSubmit={handleSaveBio} className="space-y-2">
+                <Textarea
                   value={newBio}
                   onChange={(e) => setNewBio(e.target.value)}
                   placeholder="Write something about yourself..."
@@ -132,9 +183,9 @@ export default function ProfilePage() {
                   <Button type="submit" disabled={updateBio.isPending}>
                     Save
                   </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => setIsEditingBio(false)}
                   >
                     Cancel
@@ -144,7 +195,7 @@ export default function ProfilePage() {
             ) : (
               <div className="flex items-start gap-2">
                 <p className="text-muted-foreground flex-1">
-                  {user.bio || "No bio yet"}
+                  {user?.bio || "No bio yet"}
                 </p>
                 {isOwnProfile && (
                   <Button
@@ -158,10 +209,59 @@ export default function ProfilePage() {
                 )}
               </div>
             )}
+
+            {isEditingLinkedIn ? (
+              <form onSubmit={handleSaveLinkedIn} className="space-y-2">
+                <Input
+                  value={newLinkedInUrl}
+                  onChange={(e) => setNewLinkedInUrl(e.target.value)}
+                  placeholder="https://www.linkedin.com/in/username"
+                  className="flex-1"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={updateLinkedInUrl.isPending}>
+                    Save
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsEditingLinkedIn(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <SiLinkedin className="h-5 w-5 text-[#0A66C2]" />
+                {user?.linkedinUrl ? (
+                  <a
+                    href={user.linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline flex-1"
+                  >
+                    {user.linkedinUrl.replace("https://www.linkedin.com/", "")}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground flex-1">No LinkedIn profile added</span>
+                )}
+                {isOwnProfile && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleStartEditLinkedIn}
+                    className="flex-shrink-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {!isOwnProfile && (
-            <FriendRequest userId={user.id} status={friendRequest?.status} />
+            <FriendRequest userId={user?.id} status={friendRequest?.status} />
           )}
         </CardContent>
       </Card>
@@ -197,11 +297,11 @@ export default function ProfilePage() {
         <Separator className="my-8" />
         <h2 className="text-2xl font-semibold">Posts</h2>
 
-        <CreatePost 
+        <CreatePost
           targetUserId={!isOwnProfile ? user.id : undefined}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${params?.id}`] });
-          }} 
+          }}
         />
 
         <div className="space-y-6">
