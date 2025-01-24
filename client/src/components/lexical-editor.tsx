@@ -213,6 +213,28 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     );
   }, [editor, showSuggestions, filteredUsers, selectedIndex]);
 
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return false;
+
+        const nodes = selection.getNodes();
+        if (nodes.length === 0) return false;
+
+        const firstNode = nodes[0];
+        if ($isMentionNode(firstNode)) {
+          firstNode.remove();
+          return true;
+        }
+
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor]);
+
   const insertMention = (username: string) => {
     editor.update(() => {
       const selection = $getSelection();
@@ -283,13 +305,14 @@ interface LexicalEditorProps {
   onChange?: (text: string) => void;
   initialValue?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
+  placeholder?: string;
 }
 
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function LexicalEditor({ onChange, initialValue = "", users }: LexicalEditorProps) {
+export default function LexicalEditor({ onChange, initialValue = "", users, placeholder }: LexicalEditorProps) {
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot();
@@ -310,11 +333,13 @@ export default function LexicalEditor({ onChange, initialValue = "", users }: Le
       <div className="relative min-h-[100px] w-full border rounded-md">
         <PlainTextPlugin
           contentEditable={
-            <ContentEditable className="min-h-[100px] outline-none px-3 py-2" />
+            <ContentEditable
+              className="min-h-[100px] outline-none px-3 pt-[10px] pb-2"
+            />
           }
           placeholder={
-            <div className="absolute top-2 left-3 text-muted-foreground pointer-events-none">
-              What's on your mind? Use @ to mention users
+            <div className="absolute top-[10px] left-3 text-muted-foreground pointer-events-none">
+              {placeholder || "What's on your mind? Use @ to mention users"}
             </div>
           }
           ErrorBoundary={LexicalErrorBoundary}
