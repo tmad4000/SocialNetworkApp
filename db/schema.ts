@@ -52,10 +52,11 @@ export const friendsRelations = relations(friends, ({ one }) => ({
   }),
 }));
 
+// Export schemas and types
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
-export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
 
 export const insertPostSchema = createInsertSchema(posts);
 export const selectPostSchema = createSelectSchema(posts);
