@@ -10,10 +10,12 @@ import {
   LexicalNode,
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
+  KEY_DOWN_COMMAND,
   $getSelection,
   $isRangeSelection,
   $createRangeSelection,
   $setSelection,
+  RangeSelection,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -135,19 +137,17 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [filteredUsers, setFilteredUsers] = useState(users);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-  const [mentionString, setMentionString] = useState("");
 
   useEffect(() => {
     const removeListener = editor.registerTextContentListener((text) => {
       const match = text.match(/@(\w*)$/);
       if (match) {
         const query = match[1];
-        setMentionString(match[0]);
         const filtered = users.filter((user) =>
           user.username.toLowerCase().includes(query.toLowerCase())
         );
         setFilteredUsers(filtered);
-        setShowSuggestions(true);
+        setShowSuggestions(filtered.length > 0);
         setSelectedIndex(0);
 
         const selection = window.getSelection();
@@ -163,86 +163,54 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
             });
           }
         }
-      } else if (!match && showSuggestions) {
+      } else {
         setShowSuggestions(false);
       }
     });
 
-    return () => {
-      removeListener();
-    };
-  }, [editor, users, showSuggestions]);
+    return removeListener;
+  }, [editor, users]);
 
   useEffect(() => {
-    const removeBackspaceListener = editor.registerCommand(
-      KEY_BACKSPACE_COMMAND,
-      () => {
-        const selection = $getSelection();
-        if ($isRangeSelection(selection) && selection.isCollapsed()) {
-          const node = selection.anchor.getNode();
-          if ($isMentionNode(node)) {
-            const parent = node.getParent();
-            if (!parent) return false;
-            node.selectPrevious();
-            node.remove();
-            return true;
-          }
+    return editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      (event: KeyboardEvent) => {
+        if (!showSuggestions || !filteredUsers.length) {
+          return false;
         }
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL,
-    );
 
-    return () => {
-      removeBackspaceListener();
-    };
-  }, [editor]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!showSuggestions || !filteredUsers.length) return false;
-
-      switch (event.key) {
-        case 'ArrowDown': {
+        if (event.key === 'ArrowDown') {
           event.preventDefault();
           setSelectedIndex((prev) =>
             prev < filteredUsers.length - 1 ? prev + 1 : prev
           );
           return true;
         }
-        case 'ArrowUp': {
+
+        if (event.key === 'ArrowUp') {
           event.preventDefault();
           setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
           return true;
         }
-        case 'Enter':
-        case 'Tab': {
+
+        if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault();
           if (filteredUsers[selectedIndex]) {
             insertMention(filteredUsers[selectedIndex].username);
-            return true;
           }
-          return false;
+          return true;
         }
-        case 'Escape': {
+
+        if (event.key === 'Escape') {
           event.preventDefault();
           setShowSuggestions(false);
           return true;
         }
-        default:
-          return false;
-      }
-    };
 
-    const removeKeyDownListener = editor.registerCommand(
-      "keydown",
-      handleKeyDown,
+        return false;
+      },
       COMMAND_PRIORITY_CRITICAL,
     );
-
-    return () => {
-      removeKeyDownListener();
-    };
   }, [editor, showSuggestions, filteredUsers, selectedIndex]);
 
   const insertMention = (username: string) => {
