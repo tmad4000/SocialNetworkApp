@@ -334,7 +334,7 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
-              className="min-h-[100px] outline-none px-3 pt-[10px] pb-2"
+              className="min-h-[100px] outline-none px-3 py-[10px]"
             />
           }
           placeholder={
