@@ -36,6 +36,8 @@ export class MentionNode extends TextNode {
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
     dom.classList.add('mention');
+    dom.style.color = 'hsl(var(--primary))';
+    dom.style.fontWeight = '500';
     return dom;
   }
 }
@@ -60,10 +62,11 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [editor] = useLexicalComposerContext();
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredUsers, setFilteredUsers] = useState(users);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
-    const removeListener = editor.registerTextContentListener((text) => {
+    const removeTextListener = editor.registerTextContentListener((text) => {
       const match = text.match(/@(\w*)$/);
       if (match) {
         const query = match[1];
@@ -72,6 +75,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
         );
         setFilteredUsers(filtered);
         setShowSuggestions(true);
+        setSelectedIndex(0);
 
         // Get the current selection and calculate position
         const selection = window.getSelection();
@@ -92,12 +96,45 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       }
     });
 
-    return () => {
-      removeListener();
-    };
-  }, [editor, users]);
+    const removeKeyListener = editor.registerCommand(
+      'keydown',
+      (event: KeyboardEvent) => {
+        if (!showSuggestions) return false;
 
-  const onSelectMention = (username: string) => {
+        switch (event.key) {
+          case 'ArrowDown':
+            setSelectedIndex((prev) => 
+              prev < filteredUsers.length - 1 ? prev + 1 : prev
+            );
+            return true;
+          case 'ArrowUp':
+            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
+            return true;
+          case 'Enter':
+          case 'Tab':
+            if (filteredUsers[selectedIndex]) {
+              event.preventDefault();
+              insertMention(filteredUsers[selectedIndex].username);
+              return true;
+            }
+            return false;
+          case 'Escape':
+            setShowSuggestions(false);
+            return true;
+          default:
+            return false;
+        }
+      },
+      1
+    );
+
+    return () => {
+      removeTextListener();
+      removeKeyListener();
+    };
+  }, [editor, users, showSuggestions, filteredUsers, selectedIndex]);
+
+  const insertMention = (username: string) => {
     editor.update(() => {
       const root = $getRoot();
       const textContent = root.getTextContent();
@@ -135,11 +172,14 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
         </div>
       ) : (
         <div className="p-1">
-          {filteredUsers.map((user) => (
+          {filteredUsers.map((user, index) => (
             <div
               key={user.id}
-              className="flex items-center gap-2 p-2 hover:bg-accent rounded-sm cursor-pointer"
-              onClick={() => onSelectMention(user.username)}
+              className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
+                index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
+              }`}
+              onClick={() => insertMention(user.username)}
+              onMouseEnter={() => setSelectedIndex(index)}
             >
               <Avatar className="h-6 w-6">
                 <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
