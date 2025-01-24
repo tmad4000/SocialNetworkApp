@@ -99,17 +99,27 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 
   const onSelectMention = (username: string) => {
     editor.update(() => {
-      const mention = $createMentionNode(username);
-      const textContent = editor.getEditorState()._nodeMap.get('root').getTextContent();
+      const root = $getRoot();
+      const textContent = root.getTextContent();
       const lastAtPos = textContent.lastIndexOf('@');
-      const selection = editor.getEditorState()._selection;
-      if (selection) {
-        selection.anchor.offset = lastAtPos;
-        selection.focus.offset = textContent.length;
-        selection.extract();
-        mention.select();
-      }
-      mention.insertAfter($createTextNode(' '));
+
+      // Create new nodes
+      const mentionNode = $createMentionNode(username);
+      const spaceNode = $createTextNode(' ');
+
+      // Get the current paragraph
+      const paragraph = root.getFirstChild();
+      if (!paragraph) return;
+
+      // Remove the @ and any characters after it
+      const textBeforeMention = textContent.slice(0, lastAtPos);
+      paragraph.clear();
+      paragraph.append($createTextNode(textBeforeMention));
+      paragraph.append(mentionNode);
+      paragraph.append(spaceNode);
+
+      // Set selection after the space
+      spaceNode.select();
     });
     setShowSuggestions(false);
   };
