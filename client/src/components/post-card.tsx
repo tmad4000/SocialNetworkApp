@@ -31,16 +31,16 @@ export default function PostCard({ post }: PostCardProps) {
             );
           }
         }
-        // Check if it's an email address
-        if (part.includes('@') && part.includes('.')) {
+        // For email addresses or any other @ content, extract the username
+        const username = part.split('@')[0];
+        const mention = post.mentions.find(m => m.mentionedUser.username === username);
+        if (mention) {
           return (
-            <a 
-              key={index} 
-              href={`mailto:${part}`} 
-              className="text-primary hover:underline cursor-pointer"
-            >
-              {part}
-            </a>
+            <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
+              <span className="text-primary hover:underline cursor-pointer">
+                {part}
+              </span>
+            </Link>
           );
         }
         // Any other @ content just gets styled blue
