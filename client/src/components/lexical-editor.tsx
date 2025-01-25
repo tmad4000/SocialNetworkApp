@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import {
   $getRoot,
   $createParagraphNode,
@@ -305,64 +305,74 @@ interface LexicalEditorProps {
   initialValue?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
   placeholder?: string;
-  onClear?: () => void;  // Add new prop for clearing the editor
 }
+
+export type LexicalEditorRef = {
+  clearContent: () => void;
+};
 
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function LexicalEditor({ onChange, initialValue = "", users, placeholder, onClear }: LexicalEditorProps) {
-  const [editor, setEditor] = useState<any>(null);
+const LexicalEditor = forwardRef<LexicalEditorRef, LexicalEditorProps>(
+  ({ onChange, initialValue = "", users, placeholder }, ref) => {
+    const [editor, setEditor] = useState<any>(null);
 
-  const onEditorChange = useCallback((editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot();
-      const text = root.getTextContent();
-      onChange?.(text);
-    });
-  }, [onChange]);
-
-  // Add method to clear editor content
-  const clearContent = useCallback(() => {
-    if (editor) {
-      editor.update(() => {
+    const onEditorChange = useCallback((editorState: EditorState) => {
+      editorState.read(() => {
         const root = $getRoot();
-        root.clear();
-        const paragraph = $createParagraphNode();
-        root.append(paragraph);
+        const text = root.getTextContent();
+        onChange?.(text);
       });
-      onClear?.();
-    }
-  }, [editor, onClear]);
+    }, [onChange]);
 
-  const initialConfig = {
-    namespace: "SocialPostEditor",
-    theme,
-    onError: console.error,
-    nodes: [MentionNode],
-  };
+    useImperativeHandle(ref, () => ({
+      clearContent: () => {
+        if (editor) {
+          editor.update(() => {
+            const root = $getRoot();
+            root.clear();
+            const paragraph = $createParagraphNode();
+            root.append(paragraph);
+          });
+        }
+      }
+    }), [editor]);
 
-  return (
-    <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative min-h-[100px] w-full border rounded-md">
-        <PlainTextPlugin
-          contentEditable={
-            <ContentEditable
-              className="min-h-[100px] outline-none px-3 leading-[1.5] pt-3"
-            />
-          }
-          placeholder={
-            <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
-              {placeholder || "What's on your mind? Use @ to mention users"}
-            </div>
-          }
-          ErrorBoundary={LexicalErrorBoundary}
-        />
-        <OnChangePlugin onChange={onEditorChange} />
-        <HistoryPlugin />
-        <MentionsPlugin users={users} />
-      </div>
-    </LexicalComposer>
-  );
-}
+    const initialConfig = {
+      namespace: "SocialPostEditor",
+      theme,
+      onError: console.error,
+      nodes: [MentionNode],
+      editable: true,
+    };
+
+    return (
+      <LexicalComposer initialConfig={initialConfig}>
+        <div className="relative min-h-[100px] w-full border rounded-md">
+          <PlainTextPlugin
+            contentEditable={
+              <ContentEditable
+                className="min-h-[100px] outline-none px-3 leading-[1.5] pt-3"
+              />
+            }
+            placeholder={
+              <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
+                {placeholder || "What's on your mind? Use @ to mention users"}
+              </div>
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <OnChangePlugin onChange={onEditorChange} />
+          <HistoryPlugin />
+          <MentionsPlugin users={users} />
+        </div>
+      </LexicalComposer>
+    );
+  }
+);
+
+LexicalEditor.displayName = "LexicalEditor";
+
+export default LexicalEditor;
