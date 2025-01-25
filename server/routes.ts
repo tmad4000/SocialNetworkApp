@@ -585,7 +585,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update bio - This is replaced by the updated version in the edited snippet.
 
   // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
@@ -956,6 +955,57 @@ export function registerRoutes(app: Express): Server {
     await db.delete(friends).where(eq(friends.id, requestId));
 
     res.json({ message: "Friend request dismissed" });
+  });
+
+  // Add this endpoint after the GET /api/posts/user/:id endpoint
+  app.get("/api/posts/:id", async (req, res) => {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          },
+          likes: true,
+        },
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      const postWithLikeInfo = {
+        ...post,
+        likeCount: post.likes.length,
+        liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
+        likes: undefined, // Remove the likes array from the response
+      };
+
+      res.json(postWithLikeInfo);
+    } catch (error) {
+      console.error('Error fetching post:', error);
+      res.status(500).json({ message: "Error fetching post" });
+    }
   });
 
   const httpServer = createServer(app);

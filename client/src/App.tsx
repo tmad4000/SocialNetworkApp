@@ -8,6 +8,7 @@ import AuthPage from "@/pages/auth-page";
 import ProfilePage from "@/pages/profile-page";
 import UsersPage from "@/pages/users-page";
 import MatchesPage from "@/pages/matches-page";
+import PostPage from "@/pages/post-page";
 import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import Navbar from "@/components/navbar";
@@ -36,6 +37,7 @@ function Router() {
           <Route path="/profile/:id" component={ProfilePage} />
           <Route path="/users" component={UsersPage} />
           <Route path="/matches" component={MatchesPage} />
+          <Route path="/post/:id" component={PostPage} />
           <Route component={NotFound} />
         </Switch>
       </main>

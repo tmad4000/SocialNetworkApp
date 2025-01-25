@@ -8,7 +8,7 @@ import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Link as LinkIcon } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -73,6 +73,11 @@ export default function PostCard({ post }: PostCardProps) {
             {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
           </p>
         </div>
+        <Link href={`/post/${post.id}`}>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <LinkIcon className="h-4 w-4" />
+          </Button>
+        </Link>
         <StatusPill status={post.status as Status} postId={post.id} />
       </CardHeader>
       <CardContent>
