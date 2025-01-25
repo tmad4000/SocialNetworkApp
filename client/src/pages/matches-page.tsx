@@ -140,7 +140,7 @@ export default function MatchesPage() {
             matchReason = "Good semantic match based on profiles";
           } else if (score > 0.3) {
             matchReason = "Moderate semantic compatibility";
-          } else {
+          } else if (score > 0.1) {
             matchReason = "Some semantic overlap in interests";
           }
 
@@ -152,7 +152,7 @@ export default function MatchesPage() {
         }
       }
 
-      if (!matchReason || score < 0.2) {
+      if (!matchReason || score < 0.1) {
         const basicMatch = calculateBasicMatchScore(currentUser, user);
         if (basicMatch.score > score) {
           score = basicMatch.score;
@@ -160,17 +160,15 @@ export default function MatchesPage() {
         }
       }
 
-      if (!matchReason) {
-        matchReason = "New user - update your profiles to see better matches";
-        score = 0.1;
+      // Only add matches with non-zero scores
+      if (score > 0.1) {
+        matchResults.push({
+          user,
+          score,
+          matchReason,
+          hasEmbeddings
+        });
       }
-
-      matchResults.push({
-        user,
-        score,
-        matchReason,
-        hasEmbeddings
-      });
     }
 
     return matchResults.sort((a, b) => b.score - a.score);
@@ -215,6 +213,8 @@ export default function MatchesPage() {
             matchReason = "Strong mutual interest alignment";
           } else if (score > 0.3) {
             matchReason = "Good potential for connection";
+          } else if (score > 0.1) {
+            matchReason = "Some mutual interests";
           }
 
           // Add direction info if there's a significant difference
@@ -225,7 +225,7 @@ export default function MatchesPage() {
           }
         }
 
-        if (!matchReason || score < 0.2) {
+        if (!matchReason || score < 0.1) {
           const basicMatch = calculateBasicMatchScore(user1, user2);
           if (basicMatch.score > score) {
             score = basicMatch.score;
@@ -233,7 +233,8 @@ export default function MatchesPage() {
           }
         }
 
-        if (score > 0.2) { // Only include meaningful matches
+        // Only include meaningful matches (>10% match score)
+        if (score > 0.1) {
           allMatches.push({
             user1: {
               id: user1.id,
