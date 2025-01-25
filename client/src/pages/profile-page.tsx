@@ -345,7 +345,7 @@ export default function ProfilePage() {
                 <span className="text-muted-foreground flex-1">
                   {user?.lookingFor ? (
                     <div>
-                      <strong>Looking for:</strong> {user.lookingFor}
+                      <strong>I'm looking for:</strong> {user.lookingFor}
                     </div>
                   ) : (
                     <span>No looking for information added</span>
