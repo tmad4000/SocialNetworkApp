@@ -15,7 +15,7 @@ export default function PostFilter({ showStatusOnly, onFilterChange }: PostFilte
         size="sm"
         className={cn(
           "gap-2",
-          showStatusOnly && "bg-muted text-foreground"
+          showStatusOnly && "bg-accent/20 text-foreground"
         )}
         onClick={() => onFilterChange(true)}
       >
@@ -27,7 +27,7 @@ export default function PostFilter({ showStatusOnly, onFilterChange }: PostFilte
         size="sm"
         className={cn(
           "gap-2",
-          !showStatusOnly && "bg-muted text-foreground"
+          !showStatusOnly && "bg-accent/20 text-foreground"
         )}
         onClick={() => onFilterChange(false)}
       >
