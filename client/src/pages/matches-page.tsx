@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Loader2, Users, AlertCircle } from "lucide-react";
+import { Loader2, Users, AlertCircle, Network } from "lucide-react";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
@@ -16,12 +17,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import type { User, Friend } from "@db/schema";
 
 type UserWithScore = {
   user: Pick<User, "id" | "username" | "avatar" | "bio" | "lookingFor">;
+  score: number;
+  matchReason: string;
+  hasEmbeddings: boolean;
+};
+
+type NetworkMatch = {
+  user1: Pick<User, "id" | "username" | "avatar">;
+  user2: Pick<User, "id" | "username" | "avatar">;
   score: number;
   matchReason: string;
   hasEmbeddings: boolean;
@@ -42,29 +52,27 @@ function cosineSim(a: number[], b: number[]) {
 }
 
 function calculateBasicMatchScore(
-  currentUser: Pick<User, "bio" | "lookingFor">,
-  otherUser: Pick<User, "bio" | "lookingFor">
+  user1: Pick<User, "bio" | "lookingFor">,
+  user2: Pick<User, "bio" | "lookingFor">
 ): { score: number; reasons: string[] } {
   const reasons: string[] = [];
   let totalScore = 0;
 
-  // Check if both users have content
-  if (!currentUser.bio && !currentUser.lookingFor && !otherUser.bio && !otherUser.lookingFor) {
+  if (!user1.bio && !user1.lookingFor && !user2.bio && !user2.lookingFor) {
     return {
       score: 0.1,
-      reasons: ["Complete your profile to get better matches"]
+      reasons: ["Complete profiles to get better matches"]
     };
   }
 
-  // Simple keyword-based scoring as fallback
-  if (currentUser.lookingFor && otherUser.bio) {
+  if (user1.lookingFor && user2.bio) {
     totalScore += 0.5;
-    reasons.push("Their profile contains keywords matching your interests");
+    reasons.push("Profiles contain matching keywords");
   }
 
-  if (otherUser.lookingFor && currentUser.bio) {
+  if (user2.lookingFor && user1.bio) {
     totalScore += 0.3;
-    reasons.push("Your profile contains keywords matching their interests");
+    reasons.push("Mutual interest alignment");
   }
 
   return {
@@ -81,7 +89,6 @@ export default function MatchesPage() {
     enabled: !!currentUser,
   });
 
-  // Query for user embeddings
   const { data: userEmbeddings } = useQuery<{
     id: number;
     userId: number;
@@ -97,19 +104,16 @@ export default function MatchesPage() {
     queryKey: ["/api/users"],
   });
 
-  // Calculate matches using embeddings when available, fallback to basic matching
+  // Calculate matches for current user
   const matches = useMemo(() => {
     if (!users || !currentUser) return [];
     console.log("Processing matches for users:", users.length);
 
     const matchResults: UserWithScore[] = [];
-
-    // Get current user's embeddings if available
     const currentUserEmbeddings = userEmbeddings?.find(
       (ue) => ue.userId === currentUser.id
     );
 
-    // Process all users except current user
     for (const user of users) {
       if (user.id === currentUser.id) continue;
 
@@ -117,23 +121,19 @@ export default function MatchesPage() {
       let matchReason = "";
       let hasEmbeddings = false;
 
-      // Try embeddings-based matching first
       if (currentUserEmbeddings) {
         const userEmbed = userEmbeddings?.find((ue) => ue.userId === user.id);
         hasEmbeddings = !!userEmbed?.bioEmbedding || !!userEmbed?.lookingForEmbedding;
 
         if (userEmbed) {
-          // Calculate bidirectional match scores
           const bioSimilarity = userEmbed.bioEmbedding && currentUserEmbeddings.lookingForEmbedding ?
             cosineSim(userEmbed.bioEmbedding, currentUserEmbeddings.lookingForEmbedding) : 0;
 
           const reverseSimilarity = currentUserEmbeddings.bioEmbedding && userEmbed.lookingForEmbedding ?
             cosineSim(currentUserEmbeddings.bioEmbedding, userEmbed.lookingForEmbedding) : 0;
 
-          // Weight the scores (70% what you're looking for, 30% what they're looking for)
           score = (bioSimilarity * 0.7) + (reverseSimilarity * 0.3);
 
-          // Generate semantic match reasons
           if (score > 0.7) {
             matchReason = "Strong semantic alignment between profiles";
           } else if (score > 0.5) {
@@ -144,7 +144,6 @@ export default function MatchesPage() {
             matchReason = "Some semantic overlap in interests";
           }
 
-          // Add specific details about match direction
           if (bioSimilarity > reverseSimilarity) {
             matchReason += ". Their profile strongly matches your preferences";
           } else if (reverseSimilarity > bioSimilarity) {
@@ -153,7 +152,6 @@ export default function MatchesPage() {
         }
       }
 
-      // Fall back to basic matching if no embeddings or low embedding score
       if (!matchReason || score < 0.2) {
         const basicMatch = calculateBasicMatchScore(currentUser, user);
         if (basicMatch.score > score) {
@@ -162,10 +160,9 @@ export default function MatchesPage() {
         }
       }
 
-      // If no meaningful match found, provide a default reason
       if (!matchReason) {
         matchReason = "New user - update your profiles to see better matches";
-        score = 0.1; // Give a small base score
+        score = 0.1;
       }
 
       matchResults.push({
@@ -176,9 +173,89 @@ export default function MatchesPage() {
       });
     }
 
-    console.log("Generated match results:", matchResults.length);
     return matchResults.sort((a, b) => b.score - a.score);
   }, [users, currentUser, userEmbeddings]);
+
+  // Calculate network-wide matches between all users
+  const networkMatches = useMemo(() => {
+    if (!users) return [];
+    console.log("Processing network-wide matches");
+
+    const allMatches: NetworkMatch[] = [];
+
+    // Compare each pair of users
+    for (let i = 0; i < users.length; i++) {
+      for (let j = i + 1; j < users.length; j++) {
+        const user1 = users[i];
+        const user2 = users[j];
+
+        let score = 0;
+        let matchReason = "";
+        let hasEmbeddings = false;
+
+        // Get embeddings for both users
+        const user1Embed = userEmbeddings?.find((ue) => ue.userId === user1.id);
+        const user2Embed = userEmbeddings?.find((ue) => ue.userId === user2.id);
+
+        hasEmbeddings = !!(user1Embed?.bioEmbedding || user1Embed?.lookingForEmbedding) &&
+                       !!(user2Embed?.bioEmbedding || user2Embed?.lookingForEmbedding);
+
+        if (user1Embed && user2Embed) {
+          const directSimilarity = user1Embed.bioEmbedding && user2Embed.lookingForEmbedding ?
+            cosineSim(user1Embed.bioEmbedding, user2Embed.lookingForEmbedding) : 0;
+
+          const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
+            cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
+
+          score = (directSimilarity + reverseSimilarity) / 2; // Average both directions
+
+          if (score > 0.7) {
+            matchReason = "Exceptional semantic compatibility";
+          } else if (score > 0.5) {
+            matchReason = "Strong mutual interest alignment";
+          } else if (score > 0.3) {
+            matchReason = "Good potential for connection";
+          }
+
+          // Add direction info if there's a significant difference
+          if (Math.abs(directSimilarity - reverseSimilarity) > 0.2) {
+            matchReason += directSimilarity > reverseSimilarity 
+              ? `. ${user1.username} strongly matches ${user2.username}'s preferences`
+              : `. ${user2.username} strongly matches ${user1.username}'s preferences`;
+          }
+        }
+
+        if (!matchReason || score < 0.2) {
+          const basicMatch = calculateBasicMatchScore(user1, user2);
+          if (basicMatch.score > score) {
+            score = basicMatch.score;
+            matchReason = basicMatch.reasons.join(". ");
+          }
+        }
+
+        if (score > 0.2) { // Only include meaningful matches
+          allMatches.push({
+            user1: {
+              id: user1.id,
+              username: user1.username,
+              avatar: user1.avatar,
+            },
+            user2: {
+              id: user2.id,
+              username: user2.username,
+              avatar: user2.avatar,
+            },
+            score,
+            matchReason,
+            hasEmbeddings
+          });
+        }
+      }
+    }
+
+    // Return top 5 matches
+    return allMatches.sort((a, b) => b.score - a.score).slice(0, 5);
+  }, [users, userEmbeddings]);
 
   if (isLoading) {
     return (
@@ -193,7 +270,7 @@ export default function MatchesPage() {
       <CardHeader className="px-0">
         <div className="flex items-center gap-2">
           <Users className="h-6 w-6" />
-          <CardTitle className="text-2xl">All Users and Match Scores</CardTitle>
+          <CardTitle className="text-2xl">Your Matches</CardTitle>
         </div>
       </CardHeader>
 
@@ -297,6 +374,91 @@ export default function MatchesPage() {
             No matches found yet. Keep checking back as more users join!
           </div>
         )}
+      </div>
+
+      {/* Network-wide Matches Section */}
+      <div className="mt-12">
+        <CardHeader className="px-0">
+          <div className="flex items-center gap-2">
+            <Network className="h-6 w-6" />
+            <div>
+              <CardTitle className="text-2xl">Strongest Network Matches</CardTitle>
+              <CardDescription>Top matches between all users in the network</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+
+        <div className="grid grid-cols-1 gap-4 mt-4">
+          {networkMatches.map(({ user1, user2, score, matchReason, hasEmbeddings }) => (
+            <Card key={`${user1.id}-${user2.id}`} className="hover:bg-accent transition-colors">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Link href={`/profile/${user1.id}`}>
+                      <div className="flex items-center gap-2 hover:underline">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage
+                            src={
+                              user1.avatar ||
+                              `https://api.dicebear.com/7.x/avatars/svg?seed=${user1.username}`
+                            }
+                          />
+                          <AvatarFallback>{user1.username[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{user1.username}</span>
+                      </div>
+                    </Link>
+                    <span className="text-muted-foreground">&</span>
+                    <Link href={`/profile/${user2.id}`}>
+                      <div className="flex items-center gap-2 hover:underline">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage
+                            src={
+                              user2.avatar ||
+                              `https://api.dicebear.com/7.x/avatars/svg?seed=${user2.username}`
+                            }
+                          />
+                          <AvatarFallback>{user2.username[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{user2.username}</span>
+                      </div>
+                    </Link>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Match Score:</span>
+                      <Progress value={score * 100} className="w-32" />
+                      <span className="text-sm text-muted-foreground">
+                        {Math.round(score * 100)}%
+                      </span>
+                      {!hasEmbeddings && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Basic matching only - semantic embeddings not yet available</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {matchReason}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {networkMatches.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              No strong network matches found yet. This section will show the top matches between any users as more people join and complete their profiles.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
