@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { pipeline, Pipeline } from "@xenova/transformers";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Users, AlertCircle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -11,6 +10,12 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import type { User } from "@db/schema";
@@ -203,6 +208,9 @@ export default function MatchesPage() {
               (f.userId === u.id && f.friendId === currentUser?.id)
           );
 
+          const userEmbed = userEmbeddings?.find((ue) => ue.id === u.id);
+          const hasEmbeddings = !!userEmbed?.bioEmbedding || !!userEmbed?.lookingForEmbedding;
+
           return (
             <Card key={u.id} className="hover:bg-accent transition-colors">
               <CardContent className="p-6">
@@ -231,6 +239,18 @@ export default function MatchesPage() {
                             <span className="text-sm text-muted-foreground">
                               {Math.round(score * 100)}%
                             </span>
+                            {!hasEmbeddings && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Basic matching only - embeddings not yet available</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {matchReason}
