@@ -18,6 +18,8 @@ export default function CommentLikeButton({
   initialLikeCount,
 }: CommentLikeButtonProps) {
   const [showLikesModal, setShowLikesModal] = useState(false);
+  const [optimisticLiked, setOptimisticLiked] = useState(initialLiked);
+  const [optimisticCount, setOptimisticCount] = useState(initialLikeCount);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -34,20 +36,27 @@ export default function CommentLikeButton({
 
       return res.json();
     },
+    onMutate: () => {
+      // Optimistically update UI
+      setOptimisticLiked(!optimisticLiked);
+      setOptimisticCount(optimisticCount + (optimisticLiked ? -1 : 1));
+    },
+    onError: (error) => {
+      // Revert optimistic update on error
+      setOptimisticLiked(initialLiked);
+      setOptimisticCount(initialLikeCount);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
     onSuccess: () => {
-      // Invalidate all relevant queries
       queryClient.invalidateQueries({ 
         predicate: (query) => {
           const queryKey = query.queryKey[0]?.toString();
           return queryKey?.includes("/comments") || queryKey?.includes("/posts");
         }
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
       });
     },
   });
@@ -65,18 +74,18 @@ export default function CommentLikeButton({
           <Heart
             className={cn(
               "h-3.5 w-3.5",
-              initialLiked ? "fill-current text-red-500" : "text-muted-foreground"
+              optimisticLiked ? "fill-current text-red-500" : "text-muted-foreground"
             )}
           />
         </Button>
-        {initialLikeCount > 0 && (
+        {optimisticCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowLikesModal(true)}
             className="text-xs text-muted-foreground hover:text-foreground h-6 px-1.5"
           >
-            {initialLikeCount}
+            {optimisticCount}
           </Button>
         )}
       </div>
