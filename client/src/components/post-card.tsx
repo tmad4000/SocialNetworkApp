@@ -7,6 +7,15 @@ import StatusPill from "@/components/ui/status-pill";
 import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
+import { Button } from "@/components/ui/button";
+import { MessageSquare } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 interface PostCardProps {
   post: Post & {
@@ -18,6 +27,12 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post }: PostCardProps) {
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const { data: commentCount } = useQuery<{ count: number }>({
+    queryKey: [`/api/posts/${post.id}/comments/count`],
+    enabled: !isCommentsOpen,
+  });
+
   const renderContent = (content: string) => {
     const parts = content.split(/(@\w+)/g);
     return parts.map((part, index) => {
@@ -64,14 +79,26 @@ export default function PostCard({ post }: PostCardProps) {
         <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
       </CardContent>
       <CardFooter className="flex-col gap-4">
-        <div className="w-full">
+        <div className="w-full flex items-center gap-4">
           <LikeButton
             postId={post.id}
             initialLiked={post.liked}
             initialLikeCount={post.likeCount}
           />
+          <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1.5">
+                <MessageSquare className="h-4 w-4" />
+                <span className="text-muted-foreground">
+                  {commentCount?.count || 0}
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4">
+              <CommentSection postId={post.id} />
+            </CollapsibleContent>
+          </Collapsible>
         </div>
-        <CommentSection postId={post.id} />
       </CardFooter>
     </Card>
   );
