@@ -14,13 +14,13 @@ const statusConfig = {
   },
   'not acknowledged': {
     icon: Clock,
-    color: 'text-yellow-500',
-    bg: 'bg-yellow-100',
+    color: 'text-gray-700',
+    bg: 'bg-gray-200',
     next: 'acknowledged' as Status,
   },
   acknowledged: {
     icon: Check,
-    color: 'text-yellow-500',
+    color: 'text-yellow-600',
     bg: 'bg-yellow-100',
     next: 'in progress' as Status,
   },
