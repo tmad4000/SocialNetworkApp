@@ -67,23 +67,21 @@ export default function CommentSection({ postId }: CommentSectionProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-2">
+    <div className="space-y-4 px-6">
+      <form onSubmit={handleSubmit} className="flex gap-2 items-start">
         <Textarea
           placeholder="Write a comment..."
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="min-h-[60px] w-full resize-none"
+          className="min-h-[60px] flex-1 resize-none"
         />
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!comment.trim() || addComment.isPending}
-          >
-            Comment
-          </Button>
-        </div>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={!comment.trim() || addComment.isPending}
+        >
+          Comment
+        </Button>
       </form>
 
       {isLoading ? (
