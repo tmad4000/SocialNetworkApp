@@ -102,7 +102,7 @@ export default function FriendRequestsMenu() {
         ) : (
           friendRequests.map((request) => (
             <DropdownMenuItem key={request.id} className="flex flex-col items-stretch gap-2 p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
                 <Link href={`/profile/${request.user.id}`}>
                   <span className="text-primary hover:underline cursor-pointer">{request.user.username}</span>
                 </Link>
