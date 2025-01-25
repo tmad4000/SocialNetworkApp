@@ -18,7 +18,7 @@ interface PostFilterProps {
 export default function PostFilter({ 
   showStatusOnly, 
   onFilterChange, 
-  selectedStatuses,
+  selectedStatuses = STATUSES,
   onStatusesChange 
 }: PostFilterProps) {
   return (
@@ -55,7 +55,7 @@ export default function PostFilter({
                   <div key={status} className="flex items-center space-x-2">
                     <Checkbox
                       id={status}
-                      checked={selectedStatuses.includes(status)}
+                      checked={selectedStatuses?.includes(status)}
                       onCheckedChange={(checked) => {
                         if (checked) {
                           onStatusesChange([...selectedStatuses, status]);

@@ -18,10 +18,12 @@ type PostWithDetails = Post & {
   liked: boolean;
 };
 
+const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
+
 export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(['none', 'not acknowledged', 'acknowledged', 'in progress', 'done']);
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(STATUSES);
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts"],
@@ -32,7 +34,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
 
     // First apply status filter if enabled
     let filtered = posts;
-    if (showStatusOnly) {
+    if (showStatusOnly && selectedStatuses.length > 0) {
       filtered = filtered.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
@@ -52,7 +54,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+      <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -79,9 +81,11 @@ export default function PostFeed({ userId }: PostFeedProps) {
           {searchQuery ? "No posts found matching your search." : "No posts yet"}
         </p>
       ) : (
-        filteredPosts.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))
+        <div className="space-y-4">
+          {filteredPosts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
       )}
     </div>
   );
