@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/hooks/use-user";
-import { Users } from "lucide-react";
+import { Users, Sparkles } from "lucide-react";
 import FriendRequestsMenu from "@/components/friend-requests-menu";
 
 export default function Navbar() {
@@ -20,6 +20,12 @@ export default function Navbar() {
             <Button variant="ghost" size="sm" className="gap-2">
               <Users className="h-4 w-4" />
               Users
+            </Button>
+          </Link>
+          <Link href="/matches">
+            <Button variant="ghost" size="sm" className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              Matches
             </Button>
           </Link>
           <FriendRequestsMenu />
