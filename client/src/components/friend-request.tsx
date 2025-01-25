@@ -117,8 +117,8 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
   }
 
   if (status === "pending") {
-    // If we're the one who received the request, show accept/dismiss buttons
-    if (requestId && currentUser?.id === userId) {
+    // If we're the recipient of the request (they sent it to us)
+    if (requestId && currentUser?.id !== userId) {
       return (
         <div className="flex gap-2">
           <Button
@@ -137,7 +137,7 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
         </div>
       );
     }
-    // If we sent the request, show pending state
+    // If we sent the request
     return (
       <Button variant="outline" disabled>
         Pending
