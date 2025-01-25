@@ -6,18 +6,25 @@ import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import CommentLikeButton from "@/components/ui/comment-like-button";
 import type { Comment, User } from "@db/schema";
 
 interface CommentSectionProps {
   postId: number;
 }
 
+type CommentWithUser = Comment & { 
+  user: Pick<User, "id" | "username" | "avatar">;
+  likeCount: number;
+  liked: boolean;
+};
+
 export default function CommentSection({ postId }: CommentSectionProps) {
   const [comment, setComment] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: comments, isLoading } = useQuery<(Comment & { user: Pick<User, "id" | "username" | "avatar"> })[]>({
+  const { data: comments, isLoading } = useQuery<CommentWithUser[]>({
     queryKey: [`/api/posts/${postId}/comments`],
   });
 
@@ -97,11 +104,18 @@ export default function CommentSection({ postId }: CommentSectionProps) {
               </Link>
               <div className="flex-1">
                 <div className="bg-muted rounded-lg p-3">
-                  <Link href={`/profile/${comment.user.id}`}>
-                    <span className="font-semibold hover:underline cursor-pointer">
-                      {comment.user.username}
-                    </span>
-                  </Link>
+                  <div className="flex items-center justify-between">
+                    <Link href={`/profile/${comment.user.id}`}>
+                      <span className="font-semibold hover:underline cursor-pointer">
+                        {comment.user.username}
+                      </span>
+                    </Link>
+                    <CommentLikeButton
+                      commentId={comment.id}
+                      initialLiked={comment.liked}
+                      initialLikeCount={comment.likeCount}
+                    />
+                  </div>
                   <p className="mt-1 text-sm whitespace-pre-wrap">{comment.content}</p>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">

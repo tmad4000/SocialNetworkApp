@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes, comments } from "@db/schema";
+import { posts, users, friends, postMentions, postLikes, comments, commentLikes } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
@@ -139,7 +139,70 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add comments endpoints with proper error handling
+  // Add comment likes endpoints
+  app.post("/api/comments/:id/like", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const commentId = parseInt(req.params.id);
+      if (isNaN(commentId)) {
+        return res.status(400).json({ message: "Invalid comment ID" });
+      }
+
+      // Check if comment exists
+      const comment = await db.query.comments.findFirst({
+        where: eq(comments.id, commentId),
+      });
+
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+
+      // Check if user already liked the comment
+      const existingLike = await db.query.commentLikes.findFirst({
+        where: and(
+          eq(commentLikes.commentId, commentId),
+          eq(commentLikes.userId, req.user.id)
+        ),
+      });
+
+      if (existingLike) {
+        // Unlike: remove the like
+        await db
+          .delete(commentLikes)
+          .where(eq(commentLikes.id, existingLike.id));
+
+        // Get updated like count
+        const likeCount = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(commentLikes)
+          .where(eq(commentLikes.commentId, commentId));
+
+        res.json({ liked: false, likeCount: likeCount[0].count });
+      } else {
+        // Like: add new like
+        await db.insert(commentLikes).values({
+          commentId,
+          userId: req.user.id,
+        });
+
+        // Get updated like count
+        const likeCount = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(commentLikes)
+          .where(eq(commentLikes.commentId, commentId));
+
+        res.json({ liked: true, likeCount: likeCount[0].count });
+      }
+    } catch (error) {
+      console.error('Error toggling comment like:', error);
+      res.status(500).json({ message: "Error toggling comment like" });
+    }
+  });
+
+  // Update the get comments endpoint to include likes
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
       const postId = parseInt(req.params.id);
@@ -156,18 +219,28 @@ export function registerRoutes(app: Express): Server {
               username: true,
               avatar: true,
             }
-          }
+          },
+          likes: true,
         },
         orderBy: desc(comments.createdAt),
       });
 
-      res.json(postComments);
+      // Transform comments to include like count and liked status
+      const commentsWithLikes = postComments.map(comment => ({
+        ...comment,
+        likeCount: comment.likes.length,
+        liked: req.user ? comment.likes.some(like => like.userId === req.user.id) : false,
+        likes: undefined, // Remove the likes array from the response
+      }));
+
+      res.json(commentsWithLikes);
     } catch (error) {
       console.error('Error fetching comments:', error);
       res.status(500).json({ message: "Error fetching comments" });
     }
   });
 
+  // Add comments endpoints with proper error handling
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -223,6 +296,7 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Error creating comment" });
     }
   });
+
 
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
