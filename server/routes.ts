@@ -478,6 +478,31 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedRequest[0]);
   });
 
+  // Add new endpoint for dismissing friend requests
+  app.post("/api/friends/dismiss", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { requestId } = req.body;
+    if (!requestId) {
+      return res.status(400).send("Request ID is required");
+    }
+
+    const request = await db.query.friends.findFirst({
+      where: eq(friends.id, requestId),
+    });
+
+    if (!request || request.friendId !== req.user.id) {
+      return res.status(400).send("Invalid request");
+    }
+
+    // Delete the friend request
+    await db.delete(friends).where(eq(friends.id, requestId));
+
+    res.json({ message: "Friend request dismissed" });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

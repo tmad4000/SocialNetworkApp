@@ -377,7 +377,11 @@ export default function ProfilePage() {
           </div>
 
           {!isOwnProfile && (
-            <FriendRequest userId={user?.id} status={friendRequest?.status} />
+            <FriendRequest
+              userId={user?.id}
+              status={friendRequest?.status}
+              requestId={friendRequest?.id}
+            />
           )}
         </CardContent>
       </Card>
