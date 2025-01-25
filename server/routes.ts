@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions } from "@db/schema";
-import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
+import { posts, users, friends, postMentions, postLikes } from "@db/schema"; // Added postLikes
+import { eq, desc, and, or, inArray, ilike, sql } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -50,6 +50,64 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     res.json(updatedPost);
+  });
+
+  // Add these endpoints after the status update endpoint
+  app.post("/api/posts/:id/like", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    // Check if post exists
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    });
+
+    if (!post) {
+      return res.status(404).send("Post not found");
+    }
+
+    // Check if user already liked the post
+    const existingLike = await db.query.postLikes.findFirst({
+      where: and(
+        eq(postLikes.postId, postId),
+        eq(postLikes.userId, req.user.id)
+      ),
+    });
+
+    if (existingLike) {
+      // Unlike: remove the like
+      await db
+        .delete(postLikes)
+        .where(eq(postLikes.id, existingLike.id));
+
+      // Get updated like count
+      const likeCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(postLikes)
+        .where(eq(postLikes.postId, postId));
+
+      res.json({ liked: false, likeCount: likeCount[0].count });
+    } else {
+      // Like: add new like
+      await db.insert(postLikes).values({
+        postId,
+        userId: req.user.id,
+      });
+
+      // Get updated like count
+      const likeCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(postLikes)
+        .where(eq(postLikes.postId, postId));
+
+      res.json({ liked: true, likeCount: likeCount[0].count });
+    }
   });
 
   // Add new Looking For update endpoint
@@ -284,7 +342,7 @@ export function registerRoutes(app: Express): Server {
     res.json(postWithMentions);
   });
 
-  // Posts with mentions
+  // Update the posts GET endpoint to include like information
   app.get("/api/posts", async (req, res) => {
     const userId = req.user?.id;
 
@@ -308,45 +366,28 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          }
+          },
+          likes: true,
         },
         orderBy: desc(posts.createdAt),
       });
 
-      res.json(allPosts);
+      // Add liked status for current user
+      const postsWithLikeInfo = allPosts.map(post => ({
+        ...post,
+        likeCount: post.likes.length,
+        liked: userId ? post.likes.some(like => like.userId === userId) : false,
+        likes: undefined, // Remove the likes array from the response
+      }));
+
+      res.json(postsWithLikeInfo);
     } catch (error) {
       console.error('Error fetching posts:', error);
       res.status(500).json({ message: "Error fetching posts" });
     }
   });
 
-  app.get("/api/user/:id", async (req, res) => {
-    const userId = parseInt(req.params.id);
-    if (isNaN(userId)) {
-      return res.status(400).send("Invalid user ID");
-    }
-
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: {
-        id: true,
-        username: true,
-        avatar: true,
-        bio: true,
-        linkedinUrl: true,
-        createdAt: true,
-      },
-    });
-
-    if (!user) {
-      return res.status(404).send("User not found");
-    }
-
-    res.json(user);
-  });
-
-
-  // User posts
+  // Posts with mentions
   app.get("/api/posts/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     if (isNaN(userId)) {

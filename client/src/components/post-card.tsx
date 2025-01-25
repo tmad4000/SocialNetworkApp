@@ -5,11 +5,14 @@ import { Link } from "wouter";
 import type { Post, User, PostMention } from "@db/schema";
 import StatusPill from "@/components/ui/status-pill";
 import type { Status } from "@/components/ui/status-pill";
+import LikeButton from "@/components/ui/like-button";
 
 interface PostCardProps {
   post: Post & {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
+    likeCount: number;
+    liked: boolean;
   };
 }
 
@@ -59,6 +62,13 @@ export default function PostCard({ post }: PostCardProps) {
       <CardContent>
         <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
       </CardContent>
+      <CardFooter>
+        <LikeButton
+          postId={post.id}
+          initialLiked={post.liked}
+          initialLikeCount={post.likeCount}
+        />
+      </CardFooter>
     </Card>
   );
 }

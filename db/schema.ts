@@ -21,6 +21,13 @@ export const posts = pgTable("posts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const postLikes = pgTable("post_likes", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const postMentions = pgTable("post_mentions", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").references(() => posts.id).notNull(),
@@ -32,12 +39,13 @@ export const friends = pgTable("friends", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
   friendId: integer("friend_id").references(() => users.id).notNull(),
-  status: text("status").notNull(), // 'pending' | 'accepted'
+  status: text("status").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
+  likes: many(postLikes),
   mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
   receivedFriendRequests: many(friends, { relationName: "receivedFriendRequests" }),
@@ -49,6 +57,18 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     references: [users.id],
   }),
   mentions: many(postMentions),
+  likes: many(postLikes),
+}));
+
+export const postLikesRelations = relations(postLikes, ({ one }) => ({
+  post: one(posts, {
+    fields: [postLikes.postId],
+    references: [posts.id],
+  }),
+  user: one(users, {
+    fields: [postLikes.userId],
+    references: [users.id],
+  }),
 }));
 
 export const postMentionsRelations = relations(postMentions, ({ one }) => ({
@@ -85,6 +105,11 @@ export const insertPostSchema = createInsertSchema(posts);
 export const selectPostSchema = createSelectSchema(posts);
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
+
+export const insertPostLikeSchema = createInsertSchema(postLikes);
+export const selectPostLikeSchema = createSelectSchema(postLikes);
+export type PostLike = typeof postLikes.$inferSelect;
+export type NewPostLike = typeof postLikes.$inferInsert;
 
 export const insertFriendSchema = createInsertSchema(friends);
 export const selectFriendSchema = createSelectSchema(friends);
