@@ -5,7 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 import type { NewUser } from "@db/schema";
+
+type RegisterFormData = NewUser & {
+  bio?: string;
+  lookingFor?: string;
+};
 
 export default function AuthPage() {
   const { login, register } = useUser();
@@ -18,10 +24,12 @@ export default function AuthPage() {
     },
   });
 
-  const registerForm = useForm<NewUser>({
+  const registerForm = useForm<RegisterFormData>({
     defaultValues: {
       username: "",
       password: "",
+      bio: "",
+      lookingFor: "",
     },
   });
 
@@ -46,7 +54,7 @@ export default function AuthPage() {
     }
   };
 
-  const onRegister = async (data: NewUser) => {
+  const onRegister = async (data: RegisterFormData) => {
     try {
       const result = await register(data);
       if (!result.ok) {
@@ -66,7 +74,6 @@ export default function AuthPage() {
   };
 
   const handleTestLogin = () => {
-    // Only attempt login with test credentials
     loginForm.setValue("username", "testuser");
     loginForm.setValue("password", "123");
     loginForm.handleSubmit(onLogin)();
@@ -120,6 +127,14 @@ export default function AuthPage() {
                   type="password"
                   placeholder="Password"
                   {...registerForm.register("password", { required: true })}
+                />
+                <Textarea
+                  placeholder="Tell us about yourself (optional)"
+                  {...registerForm.register("bio")}
+                />
+                <Input
+                  placeholder="What are you looking for? (optional)"
+                  {...registerForm.register("lookingFor")}
                 />
                 <Button type="submit" className="w-full">
                   Register
