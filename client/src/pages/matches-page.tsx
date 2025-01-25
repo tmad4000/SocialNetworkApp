@@ -116,7 +116,7 @@ export default function MatchesPage() {
     })();
   }, [model, users, currentUser]);
 
-  // Calculate matches with lower threshold
+  // Calculate matches for all users
   const matches = useMemo(() => {
     if (!users || !currentUser || !userEmbeddings.length) return [];
 
@@ -151,6 +151,7 @@ export default function MatchesPage() {
 
     if (!currentUserEmbeddings) return [];
 
+    // Process all users except current user
     for (const user of users) {
       if (user.id === currentUser.id) continue;
 
@@ -170,26 +171,25 @@ export default function MatchesPage() {
       // Use weighted average of bidirectional scores
       const score = score1 + score2;
 
-      // Lower threshold to catch more potential matches
-      if (score > 0.3) {
-        let matchReason = "";
-
-        if (score > 0.8) {
-          matchReason = "Exceptional match! Your interests and goals align perfectly.";
-        } else if (score > 0.6) {
-          matchReason = "Strong match based on shared interests and complementary goals.";
-        } else if (score > 0.4) {
-          matchReason = "Good match with some common interests and potential synergy.";
-        } else {
-          matchReason = "Potential match with some overlapping interests.";
-        }
-
-        matchResults.push({
-          user,
-          score,
-          matchReason,
-        });
+      // Generate match reason based on score
+      let matchReason = "";
+      if (score > 0.8) {
+        matchReason = "Exceptional match! Your interests and goals align perfectly.";
+      } else if (score > 0.6) {
+        matchReason = "Strong match based on shared interests and complementary goals.";
+      } else if (score > 0.4) {
+        matchReason = "Good match with some common interests and potential synergy.";
+      } else if (score > 0.2) {
+        matchReason = "Potential match with some overlapping interests.";
+      } else {
+        matchReason = "Limited match based on current information.";
       }
+
+      matchResults.push({
+        user,
+        score,
+        matchReason,
+      });
     }
 
     return matchResults.sort((a, b) => b.score - a.score);
@@ -208,7 +208,7 @@ export default function MatchesPage() {
       <CardHeader className="px-0">
         <div className="flex items-center gap-2">
           <Users className="h-6 w-6" />
-          <CardTitle className="text-2xl">Your Matches</CardTitle>
+          <CardTitle className="text-2xl">All Users and Match Scores</CardTitle>
         </div>
       </CardHeader>
 
@@ -216,7 +216,7 @@ export default function MatchesPage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <p className="text-muted-foreground">
-              Add what you're looking for in your profile to see matches!
+              Add what you're looking for in your profile to see match scores!
             </p>
           </CardContent>
         </Card>
