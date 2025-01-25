@@ -17,7 +17,13 @@ export default function FriendRequestsMenu() {
 
   const { data: friendRequests } = useQuery<(Friend & { user: User })[]>({
     queryKey: ["/api/friends"],
-    select: (friends) => friends.filter(f => f.friendId === (queryClient.getQueryData(['user']) as User)?.id && f.status === 'pending'),
+    select: (friends) => {
+      const currentUser = queryClient.getQueryData(['user']) as User;
+      return friends
+        .filter(f => f.friendId === currentUser?.id && f.status === 'pending')
+        // Sort by most recent first (assuming friendRequests have a createdAt field)
+        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    },
   });
 
   const acceptRequest = useMutation({
