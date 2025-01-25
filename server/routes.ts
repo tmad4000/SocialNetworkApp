@@ -397,7 +397,7 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedUser);
   });
 
-  // Update user profile endpoint to include linkedinUrl
+  // Update user profile endpoint to include linkedinUrl and lookingFor
   app.get("/api/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     if (isNaN(userId)) {
@@ -412,6 +412,7 @@ export function registerRoutes(app: Express): Server {
         avatar: true,
         bio: true,
         linkedinUrl: true,
+        lookingFor: true,
         createdAt: true,
       },
     });
@@ -593,7 +594,7 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const allPosts = await db.query.posts.findMany({
-        where: showStatusOnly ? 
+        where: showStatusOnly ?
           not(eq(posts.status, 'none')) : undefined,
         with: {
           user: {
