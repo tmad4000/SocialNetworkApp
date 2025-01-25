@@ -5,7 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Users, Pencil } from "lucide-react";
+import { Loader2, Users, Pencil, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
 import FriendRequest from "@/components/friend-request";
@@ -13,9 +14,8 @@ import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
-import { Input } from "@/components/ui/input";
 
 type FriendWithRelations = Friend & {
     user: {
@@ -37,6 +37,7 @@ export default function ProfilePage() {
   const [newLinkedInUrl, setNewLinkedInUrl] = useState("");
   const [isEditingLookingFor, setIsEditingLookingFor] = useState(false);
   const [newLookingFor, setNewLookingFor] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -134,7 +135,6 @@ export default function ProfilePage() {
     },
     onSuccess: (data) => {
       setIsEditingLookingFor(false);
-      // Immediately update the cache with the new data
       queryClient.setQueryData([`/api/user/${params?.id}`], (oldData: any) => ({
         ...oldData,
         ...data,
@@ -169,6 +169,19 @@ export default function ProfilePage() {
   })[]>({
     queryKey: [`/api/posts/user/${params?.id}`],
   });
+
+  const filteredPosts = useMemo(() => {
+    if (!posts) return [];
+    if (!searchQuery.trim()) return posts;
+
+    const query = searchQuery.toLowerCase();
+    return posts.filter(post => 
+      post.content.toLowerCase().includes(query) ||
+      post.mentions.some(mention => 
+        mention.mentionedUser.username.toLowerCase().includes(query)
+      )
+    );
+  }, [posts, searchQuery]);
 
   const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
@@ -210,7 +223,6 @@ export default function ProfilePage() {
     e.preventDefault();
     updateLinkedInUrl.mutate(newLinkedInUrl);
   };
-
 
   const acceptedFriends = friends?.reduce<{
     id: number;
@@ -415,7 +427,18 @@ export default function ProfilePage() {
 
       <div className="space-y-6">
         <Separator className="my-8" />
-        <h2 className="text-2xl font-semibold">Posts</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">Posts</h2>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
 
         <CreatePost
           targetUserId={!isOwnProfile ? user.id : undefined}
@@ -425,11 +448,13 @@ export default function ProfilePage() {
         />
 
         <div className="space-y-6">
-          {posts?.map((post) => (
+          {filteredPosts?.map((post) => (
             <PostCard key={post.id} post={post} />
           ))}
-          {!posts?.length && (
-            <p className="text-muted-foreground text-center py-8">No posts yet</p>
+          {!filteredPosts?.length && (
+            <p className="text-muted-foreground text-center py-8">
+              {searchQuery ? "No posts found matching your search." : "No posts yet"}
+            </p>
           )}
         </div>
       </div>
