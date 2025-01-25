@@ -1,11 +1,22 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { createServer, type Server as HTTPServer } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
 import { posts, users, friends, postMentions, postLikes, comments, commentLikes } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
+import { WebSocket, WebSocketServer } from 'ws';
 
-export function registerRoutes(app: Express): Server {
+// Map to store active WebSocket connections
+const connectedClients = new Map<number, WebSocket>();
+
+function broadcastToUser(userId: number, notification: any) {
+  const client = connectedClients.get(userId);
+  if (client?.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify(notification));
+  }
+}
+
+export function registerRoutes(app: Express): HTTPServer {
   setupAuth(app);
 
   // Add status update endpoint
@@ -66,6 +77,14 @@ export function registerRoutes(app: Express): Server {
     // Check if post exists
     const post = await db.query.posts.findFirst({
       where: eq(posts.id, postId),
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+          }
+        }
+      }
     });
 
     if (!post) {
@@ -80,34 +99,40 @@ export function registerRoutes(app: Express): Server {
       ),
     });
 
+    let result;
     if (existingLike) {
-      // Unlike: remove the like
-      await db
-        .delete(postLikes)
-        .where(eq(postLikes.id, existingLike.id));
-
-      // Get updated like count
+      await db.delete(postLikes).where(eq(postLikes.id, existingLike.id));
       const likeCount = await db
         .select({ count: sql<number>`count(*)` })
         .from(postLikes)
         .where(eq(postLikes.postId, postId));
-
-      res.json({ liked: false, likeCount: likeCount[0].count });
+      result = { liked: false, likeCount: likeCount[0].count };
     } else {
-      // Like: add new like
       await db.insert(postLikes).values({
         postId,
         userId: req.user.id,
       });
-
-      // Get updated like count
       const likeCount = await db
         .select({ count: sql<number>`count(*)` })
         .from(postLikes)
         .where(eq(postLikes.postId, postId));
+      result = { liked: true, likeCount: likeCount[0].count };
 
-      res.json({ liked: true, likeCount: likeCount[0].count });
+      // Send notification to post owner
+      if (post.userId !== req.user.id) {
+        broadcastToUser(post.userId, {
+          type: 'LIKE',
+          data: {
+            postId,
+            userId: req.user.id,
+            username: req.user.username,
+            action: 'liked your post'
+          }
+        });
+      }
     }
+
+    res.json(result);
   });
 
   // Add this endpoint after the existing like endpoint
@@ -310,6 +335,14 @@ export function registerRoutes(app: Express): Server {
       // Verify post exists
       const post = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+            }
+          }
+        }
       });
 
       if (!post) {
@@ -325,6 +358,20 @@ export function registerRoutes(app: Express): Server {
           userId: req.user.id,
         })
         .returning();
+
+      // Send notification to post owner
+      if (post.userId !== req.user.id) {
+        broadcastToUser(post.userId, {
+          type: 'COMMENT',
+          data: {
+            postId,
+            commentId: newComment.id,
+            userId: req.user.id,
+            username: req.user.username,
+            action: 'commented on your post'
+          }
+        });
+      }
 
       // Return comment with user information
       const commentWithUser = await db.query.comments.findFirst({
@@ -894,15 +941,31 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Friend request already exists");
     }
 
-    const newRequest = await db.insert(friends)
-      .values({
-        userId: req.user.id,
-        friendId: friendId,
-        status: "pending",
-      })
-      .returning();
+    try {
+      const newRequest = await db.insert(friends)
+        .values({
+          userId: req.user.id,
+          friendId: friendId,
+          status: "pending",
+        })
+        .returning();
 
-    res.json(newRequest[0]);
+      // Send notification to the friend
+      broadcastToUser(friendId, {
+        type: 'FRIEND_REQUEST',
+        data: {
+          requestId: newRequest[0].id,
+          userId: req.user.id,
+          username: req.user.username,
+          action: 'sent you a friend request'
+        }
+      });
+
+      res.json(newRequest[0]);
+    } catch (error) {
+      console.error('Error creating friend request:', error);
+      res.status(500).json({ message: "Error creating friend request" });
+    }
   });
 
   app.post("/api/friends/accept", async (req, res) => {
@@ -1009,5 +1072,41 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
+
+  // Set up WebSocket server
+  const wss = new WebSocketServer({ noServer: true });
+
+  // Handle WebSocket upgrade requests
+  httpServer.on('upgrade', (request, socket, head) => {
+    const protocol = request.headers['sec-websocket-protocol'];
+    // Skip vite HMR connections
+    if (protocol === 'vite-hmr') {
+      return;
+    }
+
+    // @ts-ignore req.session is added by express-session
+    if (!request.session?.passport?.user) {
+      socket.destroy();
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  });
+
+  // Handle WebSocket connections
+  wss.on('connection', (ws, request) => {
+    // @ts-ignore req.session is added by express-session
+    const userId = request.session?.passport?.user?.id;
+    if (!userId) return;
+
+    connectedClients.set(userId, ws);
+
+    ws.on('close', () => {
+      connectedClients.delete(userId);
+    });
+  });
+
   return httpServer;
 }

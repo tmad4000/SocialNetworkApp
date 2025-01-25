@@ -12,9 +12,13 @@ import PostPage from "@/pages/post-page";
 import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import Navbar from "@/components/navbar";
+import { useNotifications } from "@/components/notification-toast";
 
 function Router() {
   const { user, isLoading } = useUser();
+
+  // Initialize notifications if user is logged in
+  useNotifications();
 
   if (isLoading) {
     return (
