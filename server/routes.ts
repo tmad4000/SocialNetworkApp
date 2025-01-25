@@ -1179,50 +1179,55 @@ export function registerRoutes(app: Express): HTTPServer {
       return res.status(400).send("Invalid post ID");
     }
 
-    // Verify post exists and belongs to user
-    const post = await db.query.posts.findFirst({
-      where: eq(posts.id, postId),
-    });
+    try {
+      // Verify post exists and belongs to user
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
 
-    if (!post) {
-      return res.status(404).send("Post not found");
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      if (post.userId !== req.user.id) {
+        return res.status(403).send("Not authorized to delete this post");
+      }
+
+      // Delete all related data in the correct order to handle foreign key constraints
+
+      // 1. Delete comment likes
+      await db.execute(sql`
+        DELETE FROM comment_likes
+        WHERE comment_id IN (
+          SELECT id FROM comments WHERE post_id = ${postId}
+        )
+      `);
+
+      // 2. Delete comments
+      await db.execute(sql`
+        DELETE FROM comments WHERE post_id = ${postId}
+      `);
+
+      // 3. Delete post likes
+      await db.execute(sql`
+        DELETE FROM post_likes WHERE post_id = ${postId}
+      `);
+
+      // 4. Delete post mentions
+      await db.execute(sql`
+        DELETE FROM post_mentions WHERE post_id = ${postId}
+      `);
+
+      // 5. Finally delete the post
+      await db.execute(sql`
+        DELETE FROM posts WHERE id = ${postId}
+      `);
+
+      res.json({ message: "Post deleted successfully" });
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      res.status(500).json({ message: "Error deleting post", error: error.message });
     }
-
-    if (post.userId !== req.user.id) {
-      return res.status(403).send("Not authorized to delete this post");
-    }
-
-    // Delete mentions first due to foreign key constraints
-    await db
-      .delete(postMentions)
-      .where(eq(postMentions.postId, postId));
-
-    // Delete likes
-    await db
-      .delete(postLikes)
-      .where(eq(postLikes.postId, postId));
-
-    // Delete comments and their likes
-    const comments = await db.query.comments.findMany({
-      where: eq(comments.postId, postId),
-    });
-
-    for (const comment of comments) {
-      await db
-        .delete(commentLikes)
-        .where(eq(commentLikes.commentId, comment.id));
-    }
-
-    await db
-      .delete(comments)
-      .where(eq(comments.postId, postId));
-
-    // Finally delete the post
-    await db
-      .delete(posts)
-      .where(eq(posts.id, postId));
-
-    res.json({ message: "Post deleted successfully" });
   });
 
   const httpServer = createServer(app);
