@@ -37,6 +37,8 @@ export default function LikeButton({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts/user"] });
+      // Add this line to invalidate the specific user's posts
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/user/"] });
     },
     onError: (error) => {
       toast({
