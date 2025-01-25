@@ -200,6 +200,16 @@ export default function ProfilePage() {
     return filtered;
   }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
+  // Calculate status counts
+  const statusCounts = useMemo(() => {
+    if (!posts) return {};
+    return posts.reduce((acc: Record<Status, number>, post) => {
+      const status = post.status as Status;
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<Status, number>);
+  }, [posts]);
+
   const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
   });
@@ -461,6 +471,7 @@ export default function ProfilePage() {
               onFilterChange={setShowStatusOnly}
               selectedStatuses={selectedStatuses}
               onStatusesChange={setSelectedStatuses}
+              statusCounts={statusCounts}
             />
           </div>
         </div>
