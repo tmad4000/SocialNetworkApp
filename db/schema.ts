@@ -21,6 +21,14 @@ export const posts = pgTable("posts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const postLikes = pgTable("post_likes", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").references(() => posts.id).notNull(),
@@ -45,6 +53,7 @@ export const friends = pgTable("friends", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
+  comments: many(comments),
   likes: many(postLikes),
   mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
@@ -56,8 +65,20 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     fields: [posts.userId],
     references: [users.id],
   }),
+  comments: many(comments),
   mentions: many(postMentions),
   likes: many(postLikes),
+}));
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  post: one(posts, {
+    fields: [comments.postId],
+    references: [posts.id],
+  }),
+  user: one(users, {
+    fields: [comments.userId],
+    references: [users.id],
+  }),
 }));
 
 export const postLikesRelations = relations(postLikes, ({ one }) => ({
@@ -105,6 +126,11 @@ export const insertPostSchema = createInsertSchema(posts);
 export const selectPostSchema = createSelectSchema(posts);
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
+
+export const insertCommentSchema = createInsertSchema(comments);
+export const selectCommentSchema = createSelectSchema(comments);
+export type Comment = typeof comments.$inferSelect;
+export type NewComment = typeof comments.$inferInsert;
 
 export const insertPostLikeSchema = createInsertSchema(postLikes);
 export const selectPostLikeSchema = createSelectSchema(postLikes);
