@@ -39,7 +39,6 @@ export default function PostCard({ post }: PostCardProps) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
-  const editorRef = useRef<{ clearContent: () => void }>();
   const { user: currentUser } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -204,8 +203,7 @@ export default function PostCard({ post }: PostCardProps) {
             <LexicalEditor
               onChange={setEditedContent}
               users={users || []}
-              initialContent={post.content}
-              ref={editorRef}
+              initialValue={post.content}
             />
             <div className="flex justify-end gap-2">
               <Button

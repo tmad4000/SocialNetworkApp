@@ -305,7 +305,28 @@ interface LexicalEditorProps {
   initialValue?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
   placeholder?: string;
-  onClear?: () => void;  // Add new prop for clearing the editor
+  onClear?: () => void;
+}
+
+function InitialValuePlugin({ initialValue }: { initialValue?: string }) {
+  const [editor] = useLexicalComposerContext();
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && initialValue) {
+      editor.update(() => {
+        const root = $getRoot();
+        if (root.getTextContent() === '') {
+          const paragraph = $createParagraphNode();
+          paragraph.append($createTextNode(initialValue));
+          root.append(paragraph);
+        }
+      });
+      setInitialized(true);
+    }
+  }, [editor, initialValue, initialized]);
+
+  return null;
 }
 
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
@@ -362,6 +383,7 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
         <OnChangePlugin onChange={onEditorChange} />
         <HistoryPlugin />
         <MentionsPlugin users={users} />
+        <InitialValuePlugin initialValue={initialValue} />
       </div>
     </LexicalComposer>
   );
