@@ -35,10 +35,13 @@ export default function LikeButton({
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate all relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/user"] });
-      // Add this line to invalidate the specific user's posts
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/user/"] });
+      // Invalidate any user-specific posts queries
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          query.queryKey[0].toString().startsWith("/api/posts/user/")
+      });
     },
     onError: (error) => {
       toast({
