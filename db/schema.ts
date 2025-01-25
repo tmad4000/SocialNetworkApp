@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Rest of the file remains unchanged
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -75,7 +76,6 @@ export const friendsRelations = relations(friends, ({ one }) => ({
   }),
 }));
 
-// Export schemas and types
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
