@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes } from "@db/schema"; // Added postLikes
+import { posts, users, friends, postMentions, postLikes, comments } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
@@ -136,6 +136,91 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching post likes:', error);
       res.status(500).json({ message: "Error fetching post likes" });
+    }
+  });
+
+  // Add comments endpoints
+  app.get("/api/posts/:id/comments", async (req, res) => {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      const postComments = await db.query.comments.findMany({
+        where: eq(comments.postId, postId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          }
+        },
+        orderBy: desc(comments.createdAt),
+      });
+
+      res.json(postComments);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      res.status(500).json({ message: "Error fetching comments" });
+    }
+  });
+
+  app.post("/api/posts/:id/comments", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    const { content } = req.body;
+    if (!content || typeof content !== "string") {
+      return res.status(400).send("Content is required");
+    }
+
+    try {
+      // Verify post exists
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      // Create comment
+      const [newComment] = await db
+        .insert(comments)
+        .values({
+          content,
+          postId,
+          userId: req.user.id,
+        })
+        .returning();
+
+      // Return comment with user information
+      const commentWithUser = await db.query.comments.findFirst({
+        where: eq(comments.id, newComment.id),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          }
+        }
+      });
+
+      res.json(commentWithUser);
+    } catch (error) {
+      console.error('Error creating comment:', error);
+      res.status(500).json({ message: "Error creating comment" });
     }
   });
 

@@ -6,6 +6,7 @@ import type { Post, User, PostMention } from "@db/schema";
 import StatusPill from "@/components/ui/status-pill";
 import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
+import CommentSection from "@/components/comment-section";
 
 interface PostCardProps {
   post: Post & {
@@ -62,12 +63,15 @@ export default function PostCard({ post }: PostCardProps) {
       <CardContent>
         <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
       </CardContent>
-      <CardFooter>
-        <LikeButton
-          postId={post.id}
-          initialLiked={post.liked}
-          initialLikeCount={post.likeCount}
-        />
+      <CardFooter className="flex-col gap-4">
+        <div className="w-full">
+          <LikeButton
+            postId={post.id}
+            initialLiked={post.liked}
+            initialLikeCount={post.likeCount}
+          />
+        </div>
+        <CommentSection postId={post.id} />
       </CardFooter>
     </Card>
   );
