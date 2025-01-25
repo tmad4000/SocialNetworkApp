@@ -588,12 +588,14 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the posts GET endpoint to include like information
+  // Update the posts GET endpoint to support status filtering
   app.get("/api/posts", async (req, res) => {
     const userId = req.user?.id;
+    const showStatusOnly = req.query.status === 'true';
 
     try {
       const allPosts = await db.query.posts.findMany({
+        where: showStatusOnly ? sql`${posts.status} != 'none'` : undefined,
         with: {
           user: {
             columns: {
@@ -633,10 +635,11 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Posts with mentions
+  // Update the user posts endpoint to support status filtering
   app.get("/api/posts/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUserId = req.user?.id;
+    const showStatusOnly = req.query.status === 'true';
 
     if (isNaN(userId)) {
       return res.status(400).send("Invalid user ID");
@@ -645,7 +648,10 @@ export function registerRoutes(app: Express): Server {
     try {
       // First get posts created by the user
       const userPosts = await db.query.posts.findMany({
-        where: eq(posts.userId, userId),
+        where: and(
+          eq(posts.userId, userId),
+          showStatusOnly ? sql`${posts.status} != 'none'` : undefined
+        ),
         with: {
           user: {
             columns: {
@@ -699,6 +705,11 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
+      // Filter mentioned posts if showStatusOnly is true
+      const filteredMentionedPosts = showStatusOnly
+        ? mentionedPosts.filter(mention => mention.post.status !== 'none')
+        : mentionedPosts;
+
       // Combine and sort posts
       const allPosts = [
         ...userPosts.map(post => ({
@@ -707,7 +718,7 @@ export function registerRoutes(app: Express): Server {
           liked: currentUserId ? post.likes.some(like => like.userId === currentUserId) : false,
           likes: undefined,
         })),
-        ...mentionedPosts.map(mention => ({
+        ...filteredMentionedPosts.map(mention => ({
           ...mention.post,
           likeCount: mention.post.likes.length,
           liked: currentUserId ? mention.post.likes.some(like => like.userId === currentUserId) : false,
