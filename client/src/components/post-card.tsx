@@ -78,14 +78,14 @@ export default function PostCard({ post }: PostCardProps) {
       <CardContent>
         <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
       </CardContent>
-      <CardFooter className="flex-col gap-4">
-        <div className="w-full flex items-center gap-4">
-          <LikeButton
-            postId={post.id}
-            initialLiked={post.liked}
-            initialLikeCount={post.likeCount}
-          />
-          <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
+      <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
+        <CardFooter className="flex-col gap-4">
+          <div className="w-full flex items-center gap-4">
+            <LikeButton
+              postId={post.id}
+              initialLiked={post.liked}
+              initialLikeCount={post.likeCount}
+            />
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-1.5">
                 <MessageSquare className="h-4 w-4" />
@@ -94,12 +94,12 @@ export default function PostCard({ post }: PostCardProps) {
                 </span>
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-4 -mx-6">
-              <CommentSection postId={post.id} />
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      </CardFooter>
+          </div>
+          <CollapsibleContent className="w-full -mx-6">
+            <CommentSection postId={post.id} />
+          </CollapsibleContent>
+        </CardFooter>
+      </Collapsible>
     </Card>
   );
 }
