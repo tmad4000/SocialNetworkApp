@@ -52,6 +52,16 @@ export default function PostFeed({ userId }: PostFeedProps) {
     return filtered;
   }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
+  // Calculate status counts
+  const statusCounts = useMemo(() => {
+    if (!posts) return {};
+    return posts.reduce((acc: Record<Status, number>, post) => {
+      const status = post.status as Status;
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<Status, number>);
+  }, [posts]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">

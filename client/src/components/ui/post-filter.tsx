@@ -55,12 +55,14 @@ export default function PostFilter({
                   <div key={status} className="flex items-center space-x-2">
                     <Checkbox
                       id={status}
-                      checked={selectedStatuses?.includes(status)}
+                      checked={selectedStatuses.includes(status)}
                       onCheckedChange={(checked) => {
                         if (checked) {
                           onStatusesChange([...selectedStatuses, status]);
                         } else {
-                          onStatusesChange(selectedStatuses.filter((s) => s !== status));
+                          onStatusesChange(
+                            selectedStatuses.filter((s) => s !== status)
+                          );
                         }
                       }}
                       disabled={!showStatusOnly}
@@ -92,3 +94,5 @@ export default function PostFilter({
     </div>
   );
 }
+
+export type { Status };
