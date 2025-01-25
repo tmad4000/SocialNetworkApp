@@ -13,7 +13,7 @@ import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SiLinkedin } from "react-icons/si";
 import { Input } from "@/components/ui/input";
 
@@ -44,7 +44,14 @@ export default function ProfilePage() {
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: [`/api/user/${params?.id}`],
+    enabled: !!params?.id,
   });
+
+  useEffect(() => {
+    if (user?.lookingFor) {
+      setNewLookingFor(user.lookingFor);
+    }
+  }, [user?.lookingFor]);
 
   const updateBio = useMutation({
     mutationFn: async (bio: string) => {
@@ -206,7 +213,6 @@ export default function ProfilePage() {
     avatar: string | null;
   }[]>((acc, f) => {
     if (f.status === "accepted") {
-      // Get the other user's info (either from user or friend field)
       const otherUser = f.userId === user?.id ? f.friend : f.user;
       if (otherUser) {
         acc.push({
