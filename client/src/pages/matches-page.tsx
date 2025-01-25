@@ -15,6 +15,13 @@ import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import type { User } from "@db/schema";
 
+function preprocessText(text: string | null | undefined): string {
+  if (!text) return "";
+  return text.toLowerCase()
+    .replace(/[-_]/g, ' ') // Replace hyphens and underscores with spaces
+    .replace(/[^\w\s]/g, ''); // Remove special characters
+}
+
 function cosineSim(a: number[], b: number[]) {
   let dot = 0,
     magA = 0,
@@ -69,8 +76,8 @@ export default function MatchesPage() {
       for (const u of users) {
         if (u.id === currentUser.id) continue; // Skip current user
 
-        // Combine bio and what they're looking for
-        const userText = `${u.bio ?? ""} ${u.lookingFor ?? ""}`;
+        // Preprocess and combine bio and what they're looking for
+        const userText = `${preprocessText(u.bio)} ${preprocessText(u.lookingFor)}`;
         const userOutput = await model(userText);
         const userVectors = userOutput[0];
 
@@ -84,7 +91,8 @@ export default function MatchesPage() {
         });
 
         // Get embedding for what they're looking for
-        const lookingForOutput = await model(u.lookingFor ?? "");
+        const lookingForText = preprocessText(u.lookingFor);
+        const lookingForOutput = await model(lookingForText || "");
         const lookingForVectors = lookingForOutput[0];
 
         // Average the vectors for looking for text
@@ -108,10 +116,9 @@ export default function MatchesPage() {
     })();
   }, [model, users, currentUser]);
 
-  // Calculate matches
+  // Calculate matches with lower threshold
   const matches = useMemo(() => {
-    if (!users || !currentUser || !userEmbeddings.length || !currentUser.lookingFor)
-      return [];
+    if (!users || !currentUser || !userEmbeddings.length) return [];
 
     const matchResults: UserWithScore[] = [];
 
@@ -119,6 +126,29 @@ export default function MatchesPage() {
     const currentUserEmbeddings = userEmbeddings.find(
       (ue) => ue.id === currentUser.id
     );
+
+    // If we don't have current user embeddings yet, calculate them
+    if (!currentUserEmbeddings && model && currentUser.lookingFor) {
+      (async () => {
+        const lookingForText = preprocessText(currentUser.lookingFor);
+        const lookingForOutput = await model(lookingForText);
+        const lookingForVectors = lookingForOutput[0];
+        const avgLookingForVec = lookingForVectors[0].map((_: number, col: number) => {
+          let sum = 0;
+          for (let row = 0; row < lookingForVectors.length; row++) {
+            sum += lookingForVectors[row][col];
+          }
+          return sum / lookingForVectors.length;
+        });
+        setUserEmbeddings(prev => [...prev, {
+          id: currentUser.id,
+          embedding: avgLookingForVec,
+          lookingForEmbedding: avgLookingForVec
+        }]);
+      })();
+      return [];
+    }
+
     if (!currentUserEmbeddings) return [];
 
     for (const user of users) {
@@ -127,31 +157,31 @@ export default function MatchesPage() {
       const userEmbed = userEmbeddings.find((ue) => ue.id === user.id);
       if (!userEmbed) continue;
 
-      // Calculate bidirectional match scores
+      // Calculate bidirectional match scores with higher weight on looking for matches
       const score1 = cosineSim(
         currentUserEmbeddings.lookingForEmbedding,
         userEmbed.embedding
-      );
+      ) * 0.7; // Weight looking for matches higher
       const score2 = cosineSim(
         userEmbed.lookingForEmbedding,
         currentUserEmbeddings.embedding
-      );
+      ) * 0.3; // Weight bio matches lower
 
-      // Use average of bidirectional scores
-      const score = (score1 + score2) / 2;
+      // Use weighted average of bidirectional scores
+      const score = score1 + score2;
 
-      // Only include significant matches
-      if (score > 0.5) {
+      // Lower threshold to catch more potential matches
+      if (score > 0.3) {
         let matchReason = "";
 
         if (score > 0.8) {
           matchReason = "Exceptional match! Your interests and goals align perfectly.";
-        } else if (score > 0.7) {
-          matchReason = "Strong match based on shared interests and complementary goals.";
         } else if (score > 0.6) {
+          matchReason = "Strong match based on shared interests and complementary goals.";
+        } else if (score > 0.4) {
           matchReason = "Good match with some common interests and potential synergy.";
         } else {
-          matchReason = "Moderate match with potential for collaboration.";
+          matchReason = "Potential match with some overlapping interests.";
         }
 
         matchResults.push({
@@ -163,7 +193,7 @@ export default function MatchesPage() {
     }
 
     return matchResults.sort((a, b) => b.score - a.score);
-  }, [users, currentUser, userEmbeddings]);
+  }, [users, currentUser, userEmbeddings, model]);
 
   if (isLoading) {
     return (
