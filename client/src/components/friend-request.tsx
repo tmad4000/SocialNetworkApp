@@ -117,31 +117,32 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
   }
 
   if (status === "pending") {
-    // If we're the recipient of the request (they sent it to us)
-    if (requestId && currentUser?.id !== userId) {
+    // If we sent the request (we are the sender)
+    if (currentUser?.id === userId) {
       return (
-        <div className="flex gap-2">
-          <Button
-            onClick={() => acceptRequest.mutate(requestId)}
-            disabled={acceptRequest.isPending}
-          >
-            Confirm
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => dismissRequest.mutate(requestId)}
-            disabled={dismissRequest.isPending}
-          >
-            Dismiss
-          </Button>
-        </div>
+        <Button variant="outline" disabled>
+          Pending
+        </Button>
       );
     }
-    // If we sent the request
+
+    // If we received the request (we are the recipient)
     return (
-      <Button variant="outline" disabled>
-        Pending
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={() => acceptRequest.mutate(requestId!)}
+          disabled={acceptRequest.isPending}
+        >
+          Confirm
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => dismissRequest.mutate(requestId!)}
+          disabled={dismissRequest.isPending}
+        >
+          Dismiss
+        </Button>
+      </div>
     );
   }
 
