@@ -29,6 +29,13 @@ export const comments = pgTable("comments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const commentLikes = pgTable("comment_likes", {
+  id: serial("id").primaryKey(),
+  commentId: integer("comment_id").references(() => comments.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const postLikes = pgTable("post_likes", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").references(() => posts.id).notNull(),
@@ -54,6 +61,7 @@ export const friends = pgTable("friends", {
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   comments: many(comments),
+  commentLikes: many(commentLikes),
   likes: many(postLikes),
   mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
@@ -70,13 +78,25 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   likes: many(postLikes),
 }));
 
-export const commentsRelations = relations(comments, ({ one }) => ({
+export const commentsRelations = relations(comments, ({ one, many }) => ({
   post: one(posts, {
     fields: [comments.postId],
     references: [posts.id],
   }),
   user: one(users, {
     fields: [comments.userId],
+    references: [users.id],
+  }),
+  likes: many(commentLikes),
+}));
+
+export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
+  comment: one(comments, {
+    fields: [commentLikes.commentId],
+    references: [comments.id],
+  }),
+  user: one(users, {
+    fields: [commentLikes.userId],
     references: [users.id],
   }),
 }));
@@ -132,17 +152,22 @@ export const selectCommentSchema = createSelectSchema(comments);
 export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 
+export const insertCommentLikeSchema = createInsertSchema(commentLikes);
+export const selectCommentLikeSchema = createSelectSchema(commentLikes);
+export type CommentLike = typeof commentLikes.$inferSelect;
+export type NewCommentLike = typeof commentLikes.$inferInsert;
+
 export const insertPostLikeSchema = createInsertSchema(postLikes);
 export const selectPostLikeSchema = createSelectSchema(postLikes);
 export type PostLike = typeof postLikes.$inferSelect;
 export type NewPostLike = typeof postLikes.$inferInsert;
 
-export const insertFriendSchema = createInsertSchema(friends);
-export const selectFriendSchema = createSelectSchema(friends);
-export type Friend = typeof friends.$inferSelect;
-export type NewFriend = typeof friends.$inferInsert;
-
 export const insertPostMentionSchema = createInsertSchema(postMentions);
 export const selectPostMentionSchema = createSelectSchema(postMentions);
 export type PostMention = typeof postMentions.$inferSelect;
 export type NewPostMention = typeof postMentions.$inferInsert;
+
+export const insertFriendSchema = createInsertSchema(friends);
+export const selectFriendSchema = createSelectSchema(friends);
+export type Friend = typeof friends.$inferSelect;
+export type NewFriend = typeof friends.$inferInsert;
