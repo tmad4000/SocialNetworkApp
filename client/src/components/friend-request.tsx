@@ -2,6 +2,13 @@ import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
 
 interface FriendRequestProps {
   userId: number;
@@ -96,7 +103,7 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
       toast({
         title: "Success",
-        description: "Friend request dismissed",
+        description: "Friend request canceled",
       });
     },
     onError: (error) => {
@@ -117,16 +124,28 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
   }
 
   if (status === "pending") {
-    // If we received the request (we are the recipient)
-    if (userId === currentUser?.id) {
+    // If we sent the request (we are the sender)
+    if (currentUser?.id !== userId) {
       return (
-        <Button variant="outline" disabled>
-          Pending
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              Pending <MoreHorizontal className="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem 
+              className="text-destructive"
+              onClick={() => dismissRequest.mutate(requestId!)}
+            >
+              Cancel Request
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       );
     }
 
-    // If we sent the request (we are the sender)
+    // If we received the request (we are the recipient)
     return (
       <div className="flex gap-2">
         <Button
