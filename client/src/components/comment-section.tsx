@@ -73,7 +73,7 @@ export default function CommentSection({ postId }: CommentSectionProps) {
           placeholder="Write a comment..."
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="min-h-[80px]"
+          className="min-h-[60px] w-full resize-none"
         />
         <div className="flex justify-end">
           <Button
