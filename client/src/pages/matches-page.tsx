@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { pipeline, Pipeline } from "@xenova/transformers";
 import { Loader2, Users } from "lucide-react";
 import {
   Card,
@@ -21,9 +20,100 @@ type UserWithScore = {
   matchReason: string;
 };
 
+function calculateMatchScore(
+  currentUser: Pick<User, "bio" | "lookingFor">,
+  otherUser: Pick<User, "bio" | "lookingFor">
+): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let totalScore = 0;
+
+  // Helper function to clean and tokenize text
+  const tokenize = (text: string | null | undefined) => {
+    return (text || "").toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3); // Only consider words longer than 3 chars
+  };
+
+  // Compare what current user is looking for with other user's bio
+  if (currentUser.lookingFor && otherUser.bio) {
+    const lookingForTokens = tokenize(currentUser.lookingFor);
+    const bioTokens = tokenize(otherUser.bio);
+
+    const matches = lookingForTokens.filter(token => 
+      bioTokens.some(bioToken => bioToken.includes(token) || token.includes(bioToken))
+    );
+
+    if (matches.length > 0) {
+      totalScore += 0.4 * (matches.length / lookingForTokens.length);
+      reasons.push(
+        `Their bio matches ${matches.length} keywords from what you're looking for`
+      );
+    }
+  }
+
+  // Compare what other user is looking for with current user's bio
+  if (otherUser.lookingFor && currentUser.bio) {
+    const lookingForTokens = tokenize(otherUser.lookingFor);
+    const bioTokens = tokenize(currentUser.bio);
+
+    const matches = lookingForTokens.filter(token => 
+      bioTokens.some(bioToken => bioToken.includes(token) || token.includes(bioToken))
+    );
+
+    if (matches.length > 0) {
+      totalScore += 0.4 * (matches.length / lookingForTokens.length);
+      reasons.push(
+        `Your bio matches ${matches.length} keywords from what they're looking for`
+      );
+    }
+  }
+
+  // Compare both users' "looking for" fields for common interests
+  if (currentUser.lookingFor && otherUser.lookingFor) {
+    const currentTokens = tokenize(currentUser.lookingFor);
+    const otherTokens = tokenize(otherUser.lookingFor);
+
+    const matches = currentTokens.filter(token => 
+      otherTokens.some(otherToken => otherToken.includes(token) || token.includes(otherToken))
+    );
+
+    if (matches.length > 0) {
+      totalScore += 0.2 * (matches.length / Math.max(currentTokens.length, otherTokens.length));
+      reasons.push(
+        `You both mention ${matches.join(", ")} in what you're looking for`
+      );
+    }
+  }
+
+  // If both users have bios, check for common interests
+  if (currentUser.bio && otherUser.bio) {
+    const currentTokens = tokenize(currentUser.bio);
+    const otherTokens = tokenize(otherUser.bio);
+
+    const matches = currentTokens.filter(token => 
+      otherTokens.some(otherToken => otherToken.includes(token) || token.includes(otherToken))
+    );
+
+    if (matches.length > 0) {
+      totalScore += 0.2 * (matches.length / Math.max(currentTokens.length, otherTokens.length));
+      reasons.push(
+        `You share common interests/skills: ${matches.join(", ")}`
+      );
+    }
+  }
+
+  // Ensure score is between 0 and 1
+  totalScore = Math.min(1, Math.max(0, totalScore));
+
+  return {
+    score: totalScore,
+    reasons: reasons.length > 0 ? reasons : ["No specific matches found based on current information"]
+  };
+}
+
 export default function MatchesPage() {
   const { user: currentUser } = useUser();
-  const [model, setModel] = useState<Pipeline | null>(null);
 
   const { data: friends } = useQuery({
     queryKey: ["/api/friends"],
@@ -35,7 +125,7 @@ export default function MatchesPage() {
     queryKey: ["/api/users"],
   });
 
-  // Calculate scores for all users
+  // Calculate matches for all users
   const matches = useMemo(() => {
     if (!users || !currentUser) return [];
     console.log("Processing matches for users:", users.length);
@@ -46,27 +136,12 @@ export default function MatchesPage() {
     for (const user of users) {
       if (user.id === currentUser.id) continue;
 
-      // For now, assign a basic similarity score
-      // This will show all users while we debug the ML-based matching
-      const score = Math.random(); // Temporary score to show all users
-
-      let matchReason = "";
-      if (score > 0.8) {
-        matchReason = "Exceptional match! Your interests and goals align perfectly.";
-      } else if (score > 0.6) {
-        matchReason = "Strong match based on shared interests and complementary goals.";
-      } else if (score > 0.4) {
-        matchReason = "Good match with some common interests and potential synergy.";
-      } else if (score > 0.2) {
-        matchReason = "Potential match with some overlapping interests.";
-      } else {
-        matchReason = "Limited match based on current information.";
-      }
+      const { score, reasons } = calculateMatchScore(currentUser, user);
 
       matchResults.push({
         user,
         score,
-        matchReason,
+        matchReason: reasons.join(". ")
       });
     }
 
