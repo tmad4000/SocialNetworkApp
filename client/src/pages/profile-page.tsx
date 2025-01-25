@@ -132,8 +132,10 @@ export default function ProfilePage() {
 
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setIsEditingLookingFor(false);
+      // Update both the user profile and the current user data
+      queryClient.setQueryData([`/api/user/${params?.id}`], data);
       queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
       toast({
         title: "Success",
@@ -148,6 +150,16 @@ export default function ProfilePage() {
       });
     },
   });
+
+  const handleStartEditLookingFor = () => {
+    setNewLookingFor(user?.lookingFor || "");
+    setIsEditingLookingFor(true);
+  };
+
+  const handleSaveLookingFor = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateLookingFor.mutate(newLookingFor);
+  };
 
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
@@ -197,15 +209,6 @@ export default function ProfilePage() {
     updateLinkedInUrl.mutate(newLinkedInUrl);
   };
 
-  const handleStartEditLookingFor = () => {
-    setNewLookingFor(user?.lookingFor || "");
-    setIsEditingLookingFor(true);
-  };
-
-  const handleSaveLookingFor = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateLookingFor.mutate(newLookingFor);
-  };
 
   const acceptedFriends = friends?.reduce<{
     id: number;
