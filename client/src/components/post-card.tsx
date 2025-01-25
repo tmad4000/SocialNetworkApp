@@ -8,14 +8,23 @@ import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Link as LinkIcon } from "lucide-react";
+import { MessageSquare, Link as LinkIcon, MoreVertical } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@/hooks/use-user";
+import { useToast } from "@/hooks/use-toast";
+import LexicalEditor from "./lexical-editor";
 
 interface PostCardProps {
   post: Post & {
@@ -28,10 +37,95 @@ interface PostCardProps {
 
 export default function PostCard({ post }: PostCardProps) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(post.content);
+  const editorRef = useRef<{ clearContent: () => void }>();
+  const { user: currentUser } = useUser();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const { data: commentCount } = useQuery<{ count: number }>({
     queryKey: [`/api/posts/${post.id}/comments/count`],
     enabled: !isCommentsOpen,
   });
+
+  const { data: users } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    staleTime: 60000, // Cache for 1 minute
+  });
+
+  const editPost = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      if (post.user.id) {
+        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
+      }
+      toast({
+        title: "Success",
+        description: "Post updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
+  const deletePost = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      if (post.user.id) {
+        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
+      }
+      toast({
+        title: "Success",
+        description: "Post deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editedContent.trim()) return;
+    editPost.mutate(editedContent);
+  };
 
   const renderContent = (content: string) => {
     const parts = content.split(/(@\w+)/g);
@@ -54,6 +148,8 @@ export default function PostCard({ post }: PostCardProps) {
     });
   };
 
+  const isOwner = currentUser?.id === post.user.id;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-4 space-y-0">
@@ -73,15 +169,63 @@ export default function PostCard({ post }: PostCardProps) {
             {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
           </p>
         </div>
-        <Link href={`/post/${post.id}`}>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <LinkIcon className="h-4 w-4" />
-          </Button>
-        </Link>
-        <StatusPill status={post.status as Status} postId={post.id} />
+        <div className="flex items-center gap-2">
+          <Link href={`/post/${post.id}`}>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <LinkIcon className="h-4 w-4" />
+            </Button>
+          </Link>
+          {isOwner && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => deletePost.mutate()}
+                >
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <StatusPill status={post.status as Status} postId={post.id} />
+        </div>
       </CardHeader>
       <CardContent>
-        <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
+        {isEditing ? (
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <LexicalEditor
+              onChange={setEditedContent}
+              users={users || []}
+              initialContent={post.content}
+              ref={editorRef}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                type="submit"
+                disabled={!editedContent.trim() || editPost.isPending}
+              >
+                Save
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditing(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
+        )}
       </CardContent>
       <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
         <CardFooter className="flex-col gap-4">

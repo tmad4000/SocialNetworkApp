@@ -1071,6 +1071,160 @@ export function registerRoutes(app: Express): HTTPServer {
     }
   });
 
+  // Edit post endpoint
+  app.put("/api/posts/:id", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    const { content } = req.body;
+    if (typeof content !== "string") {
+      return res.status(400).send("Content must be a string");
+    }
+
+    // Verify post exists and belongs to user
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    });
+
+    if (!post) {
+      return res.status(404).send("Post not found");
+    }
+
+    if (post.userId !== req.user.id) {
+      return res.status(403).send("Not authorized to edit this post");
+    }
+
+    // Extract mentions from content using regex
+    const mentionMatches = content.match(/@(\w+)/g) || [];
+    const mentionedUsernames = mentionMatches.map(match => match.substring(1));
+
+    // Find mentioned users
+    const mentionedUsers = await db.query.users.findMany({
+      where: inArray(users.username, mentionedUsernames),
+    });
+
+    // Update post
+    const [updatedPost] = await db
+      .update(posts)
+      .set({ content })
+      .where(eq(posts.id, postId))
+      .returning();
+
+    // Delete existing mentions
+    await db
+      .delete(postMentions)
+      .where(eq(postMentions.postId, postId));
+
+    // Create new mentions
+    if (mentionedUsers.length > 0) {
+      await db.insert(postMentions).values(
+        mentionedUsers.map(user => ({
+          postId,
+          mentionedUserId: user.id,
+        }))
+      );
+    }
+
+    // Return post with updated mentions
+    const postWithMentions = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        mentions: {
+          with: {
+            mentionedUser: {
+              columns: {
+                id: true,
+                username: true,
+                avatar: true,
+              }
+            }
+          }
+        },
+        likes: true,
+      },
+    });
+
+    // Transform response to include like count and liked status
+    const response = {
+      ...postWithMentions,
+      likeCount: postWithMentions?.likes.length || 0,
+      liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
+      likes: undefined, // Remove the likes array from the response
+    };
+
+    res.json(response);
+  });
+
+  // Delete post endpoint
+  app.delete("/api/posts/:id", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    // Verify post exists and belongs to user
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    });
+
+    if (!post) {
+      return res.status(404).send("Post not found");
+    }
+
+    if (post.userId !== req.user.id) {
+      return res.status(403).send("Not authorized to delete this post");
+    }
+
+    // Delete mentions first due to foreign key constraints
+    await db
+      .delete(postMentions)
+      .where(eq(postMentions.postId, postId));
+
+    // Delete likes
+    await db
+      .delete(postLikes)
+      .where(eq(postLikes.postId, postId));
+
+    // Delete comments and their likes
+    const comments = await db.query.comments.findMany({
+      where: eq(comments.postId, postId),
+    });
+
+    for (const comment of comments) {
+      await db
+        .delete(commentLikes)
+        .where(eq(commentLikes.commentId, comment.id));
+    }
+
+    await db
+      .delete(comments)
+      .where(eq(comments.postId, postId));
+
+    // Finally delete the post
+    await db
+      .delete(posts)
+      .where(eq(posts.id, postId));
+
+    res.json({ message: "Post deleted successfully" });
+  });
+
   const httpServer = createServer(app);
 
   // Set up WebSocket server
