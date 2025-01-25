@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import LikesModal from "@/components/likes-modal";
 
 interface LikeButtonProps {
   postId: number;
@@ -15,6 +17,7 @@ export default function LikeButton({
   initialLiked,
   initialLikeCount,
 }: LikeButtonProps) {
+  const [showLikesModal, setShowLikesModal] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -45,20 +48,39 @@ export default function LikeButton({
   });
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="gap-1.5"
-      onClick={() => toggleLike.mutate()}
-      disabled={toggleLike.isPending}
-    >
-      <Heart
-        className={cn(
-          "h-4 w-4",
-          initialLiked ? "fill-current text-red-500" : "text-muted-foreground"
+    <>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => toggleLike.mutate()}
+          disabled={toggleLike.isPending}
+        >
+          <Heart
+            className={cn(
+              "h-4 w-4",
+              initialLiked ? "fill-current text-red-500" : "text-muted-foreground"
+            )}
+          />
+        </Button>
+        {initialLikeCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowLikesModal(true)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            {initialLikeCount} {initialLikeCount === 1 ? 'like' : 'likes'}
+          </Button>
         )}
+      </div>
+
+      <LikesModal
+        postId={postId}
+        open={showLikesModal}
+        onOpenChange={setShowLikesModal}
       />
-      <span className="text-muted-foreground">{initialLikeCount}</span>
-    </Button>
+    </>
   );
 }

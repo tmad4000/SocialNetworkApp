@@ -110,6 +110,35 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add this endpoint after the existing like endpoint
+  app.get("/api/posts/:id/likes", async (req, res) => {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      const likes = await db.query.postLikes.findMany({
+        where: eq(postLikes.postId, postId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          }
+        },
+        orderBy: desc(postLikes.createdAt),
+      });
+
+      res.json(likes);
+    } catch (error) {
+      console.error('Error fetching post likes:', error);
+      res.status(500).json({ message: "Error fetching post likes" });
+    }
+  });
+
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
