@@ -419,6 +419,8 @@ export function registerRoutes(app: Express): Server {
   // Posts with mentions
   app.get("/api/posts/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
+    const currentUserId = req.user?.id;
+
     if (isNaN(userId)) {
       return res.status(400).send("Invalid user ID");
     }
@@ -445,7 +447,8 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          }
+          },
+          likes: true,
         },
       });
 
@@ -472,7 +475,8 @@ export function registerRoutes(app: Express): Server {
                     }
                   }
                 }
-              }
+              },
+              likes: true,
             }
           }
         }
@@ -480,8 +484,18 @@ export function registerRoutes(app: Express): Server {
 
       // Combine and sort posts
       const allPosts = [
-        ...userPosts,
-        ...mentionedPosts.map(mention => mention.post)
+        ...userPosts.map(post => ({
+          ...post,
+          likeCount: post.likes.length,
+          liked: currentUserId ? post.likes.some(like => like.userId === currentUserId) : false,
+          likes: undefined,
+        })),
+        ...mentionedPosts.map(mention => ({
+          ...mention.post,
+          likeCount: mention.post.likes.length,
+          liked: currentUserId ? mention.post.likes.some(like => like.userId === currentUserId) : false,
+          likes: undefined,
+        }))
       ].sort((a, b) =>
         (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
       );
