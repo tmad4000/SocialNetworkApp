@@ -16,20 +16,19 @@ import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
-import PostFilter from "@/components/ui/post-filter";
 
 type FriendWithRelations = Friend & {
-  user: {
-    id: number;
-    username: string;
-    avatar: string | null;
+    user: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
+    friend: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
   };
-  friend: {
-    id: number;
-    username: string;
-    avatar: string | null;
-  };
-};
 
 export default function ProfilePage() {
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -39,16 +38,14 @@ export default function ProfilePage() {
   const [isEditingLookingFor, setIsEditingLookingFor] = useState(false);
   const [newLookingFor, setNewLookingFor] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showStatusOnly, setShowStatusOnly] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [match] = useRoute("/profile/:id");
+  const [, params] = useRoute("/profile/:id");
   const { user: currentUser } = useUser();
-  const userId = match?.params?.id;
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
-    queryKey: [`/api/user/${userId}`],
-    enabled: !!userId,
+    queryKey: [`/api/user/${params?.id}`],
+    enabled: !!params?.id,
   });
 
   useEffect(() => {
@@ -74,7 +71,7 @@ export default function ProfilePage() {
     },
     onSuccess: () => {
       setIsEditingBio(false);
-      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
       toast({
         title: "Success",
         description: "Bio updated successfully",
@@ -106,7 +103,7 @@ export default function ProfilePage() {
     },
     onSuccess: () => {
       setIsEditingLinkedIn(false);
-      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
       toast({
         title: "Success",
         description: "LinkedIn URL updated successfully",
@@ -138,7 +135,7 @@ export default function ProfilePage() {
     },
     onSuccess: (data) => {
       setIsEditingLookingFor(false);
-      queryClient.setQueryData([`/api/user/${userId}`], (oldData: any) => ({
+      queryClient.setQueryData([`/api/user/${params?.id}`], (oldData: any) => ({
         ...oldData,
         ...data,
       }));
@@ -169,27 +166,14 @@ export default function ProfilePage() {
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
-    likeCount: number;
-    liked: boolean;
   })[]>({
-    queryKey: [`/api/posts/user/${userId}`],
-    queryFn: async ({ queryKey }) => {
-      const baseUrl = queryKey[0] as string;
-      const url = new URL(baseUrl, window.location.origin);
-      url.searchParams.set('status', showStatusOnly.toString());
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch posts');
-      return res.json();
-    }
+    queryKey: [`/api/posts/user/${params?.id}`],
   });
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
-
-    // If there's no search query, just return the posts (already filtered by status via API)
     if (!searchQuery.trim()) return posts;
 
-    // If there is a search query, filter the already status-filtered posts
     const query = searchQuery.toLowerCase();
     return posts.filter(post => 
       post.content.toLowerCase().includes(query) ||
@@ -414,23 +398,44 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      <Card className="mb-8">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5" />
+            <h2 className="text-xl font-semibold">Friends</h2>
+          </div>
+
+          {!acceptedFriends?.length ? (
+            <p className="text-muted-foreground">No friends yet</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {acceptedFriends?.map((friend) => (
+                <Link key={friend.id} href={`/profile/${friend.id}`}>
+                  <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={friend.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${friend.username}`} />
+                      <AvatarFallback>{friend.username[0]}</AvatarFallback>
+                    </Avatar>
+                    <span className="font-medium truncate">{friend.username}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="space-y-6">
         <Separator className="my-8" />
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search posts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <PostFilter 
-              showStatusOnly={showStatusOnly} 
-              onFilterChange={setShowStatusOnly}
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
             />
           </div>
         </div>
@@ -438,7 +443,7 @@ export default function ProfilePage() {
         <CreatePost
           targetUserId={!isOwnProfile ? user.id : undefined}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${userId}`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${params?.id}`] });
           }}
         />
 
