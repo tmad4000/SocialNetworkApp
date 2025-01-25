@@ -594,10 +594,7 @@ export function registerRoutes(app: Express): Server {
     try {
       const allPosts = await db.query.posts.findMany({
         where: showStatusOnly ? 
-          and(
-            not(eq(posts.status, 'none')),
-            not(eq(posts.status, 'Set Status'))
-          ) : undefined,
+          not(eq(posts.status, 'none')) : undefined,
         with: {
           user: {
             columns: {
@@ -652,11 +649,7 @@ export function registerRoutes(app: Express): Server {
       const userPosts = await db.query.posts.findMany({
         where: and(
           eq(posts.userId, userId),
-          showStatusOnly ? 
-            and(
-              not(eq(posts.status, 'none')),
-              not(eq(posts.status, 'Set Status'))
-            ) : undefined
+          showStatusOnly ? not(eq(posts.status, 'none')) : undefined
         ),
         with: {
           user: {
