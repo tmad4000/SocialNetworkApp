@@ -2,14 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Users, Search } from "lucide-react";
 import type { User } from "@db/schema";
 import { Button } from "@/components/ui/button";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
+import { Input } from "@/components/ui/input";
+import { useState, useMemo } from "react";
 
 export default function UsersPage() {
   const { user: currentUser } = useUser();
+  const [searchQuery, setSearchQuery] = useState("");
+
   const { data: users, isLoading } = useQuery<(Pick<User, "id" | "username" | "avatar" | "bio">)[]>({
     queryKey: ["/api/users"],
   });
@@ -17,6 +21,17 @@ export default function UsersPage() {
   const { data: friends } = useQuery({
     queryKey: ["/api/friends"],
   });
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    if (!searchQuery.trim()) return users;
+
+    const query = searchQuery.toLowerCase();
+    return users.filter(user => 
+      user.username.toLowerCase().includes(query) || 
+      user.bio?.toLowerCase().includes(query)
+    );
+  }, [users, searchQuery]);
 
   if (isLoading) {
     return (
@@ -33,8 +48,18 @@ export default function UsersPage() {
         <h1 className="text-2xl font-bold">Browse Users</h1>
       </div>
 
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search users by name or bio..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {users?.map((user) => {
+        {filteredUsers.map((user) => {
           const friendRequest = friends?.find(
             (f) =>
               (f.userId === currentUser?.id && f.friendId === user.id) ||
@@ -78,6 +103,12 @@ export default function UsersPage() {
             </Card>
           );
         })}
+
+        {filteredUsers.length === 0 && (
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            No users found matching your search.
+          </div>
+        )}
       </div>
     </div>
   );
