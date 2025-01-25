@@ -65,7 +65,7 @@ export default function AuthPage() {
 
   const handleTestLogin = () => {
     loginForm.setValue("username", "testuser");
-    loginForm.setValue("password", "testpass");
+    loginForm.setValue("password", "123");
     loginForm.handleSubmit(onLogin)();
   };
 
@@ -96,8 +96,8 @@ export default function AuthPage() {
                 <Button type="submit" className="w-full">
                   Login
                 </Button>
-                <Button 
-                  type="button" 
+                <Button
+                  type="button"
                   variant="outline"
                   className="w-full"
                   onClick={handleTestLogin}
