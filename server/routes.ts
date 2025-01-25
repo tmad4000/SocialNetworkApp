@@ -231,6 +231,26 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add this endpoint after the existing comments endpoints
+  app.get("/api/posts/:id/comments/count", async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).json({ message: "Invalid post ID" });
+      }
+
+      const count = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(comments)
+        .where(eq(comments.postId, postId));
+
+      res.json({ count: count[0].count });
+    } catch (error) {
+      console.error('Error fetching comment count:', error);
+      res.status(500).json({ message: "Error fetching comment count" });
+    }
+  });
+
   // Update the get comments endpoint to include likes
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
@@ -268,6 +288,7 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Error fetching comments" });
     }
   });
+
 
   // Add comments endpoints with proper error handling
   app.post("/api/posts/:id/comments", async (req, res) => {
@@ -325,6 +346,7 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Error creating comment" });
     }
   });
+
 
 
   // Add new Looking For update endpoint
