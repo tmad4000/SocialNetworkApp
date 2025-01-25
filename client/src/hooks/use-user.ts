@@ -8,6 +8,11 @@ type RequestResult = {
   message: string;
 };
 
+type StoredCredentials = {
+  username: string;
+  password: string;
+};
+
 async function handleRequest(
   url: string,
   method: string,
@@ -43,6 +48,22 @@ async function fetchUser(): Promise<User | null> {
 
   if (!response.ok) {
     if (response.status === 401) {
+      // Try to auto-login if we have stored credentials
+      const stored = localStorage.getItem('auth');
+      if (stored) {
+        const credentials: StoredCredentials = JSON.parse(stored);
+        const loginResult = await handleRequest('/api/login', 'POST', credentials);
+        if (loginResult.ok) {
+          const retryResponse = await fetch('/api/user', {
+            credentials: 'include'
+          });
+          if (retryResponse.ok) {
+            return retryResponse.json();
+          }
+        }
+        // If auto-login fails, clear stored credentials
+        localStorage.removeItem('auth');
+      }
       return null;
     }
 
@@ -68,7 +89,12 @@ export function useUser() {
 
   const loginMutation = useMutation<RequestResult, Error, NewUser>({
     mutationFn: (userData) => handleRequest('/api/login', 'POST', userData),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Store credentials on successful login
+      localStorage.setItem('auth', JSON.stringify({
+        username: variables.username,
+        password: variables.password
+      }));
       queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
@@ -76,13 +102,20 @@ export function useUser() {
   const logoutMutation = useMutation<RequestResult, Error>({
     mutationFn: () => handleRequest('/api/logout', 'POST'),
     onSuccess: () => {
+      // Clear stored credentials on logout
+      localStorage.removeItem('auth');
       queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
 
   const registerMutation = useMutation<RequestResult, Error, NewUser>({
     mutationFn: (userData) => handleRequest('/api/register', 'POST', userData),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Store credentials on successful registration
+      localStorage.setItem('auth', JSON.stringify({
+        username: variables.username,
+        password: variables.password
+      }));
       queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
