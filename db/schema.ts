@@ -13,11 +13,11 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Rest of the file remains unchanged
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
   userId: integer("user_id").references(() => users.id).notNull(),
+  status: text("status").notNull().default('none'),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

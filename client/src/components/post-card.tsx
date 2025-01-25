@@ -3,6 +3,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "wouter";
 import type { Post, User, PostMention } from "@db/schema";
+import StatusPill from "@/components/ui/status-pill";
+import type { Status } from "@/components/ui/status-pill";
 
 interface PostCardProps {
   post: Post & {
@@ -13,12 +15,10 @@ interface PostCardProps {
 
 export default function PostCard({ post }: PostCardProps) {
   const renderContent = (content: string) => {
-    // Split content into parts, preserving @mentions
     const parts = content.split(/(@\w+)/g);
     return parts.map((part, index) => {
-      // Check if this part is a mention (starts with @)
       if (part.startsWith('@')) {
-        const username = part.slice(1); // Remove @ symbol
+        const username = part.slice(1);
         const mention = post.mentions.find(m => m.mentionedUser.username === username);
 
         if (mention) {
@@ -31,8 +31,6 @@ export default function PostCard({ post }: PostCardProps) {
           );
         }
       }
-
-      // Return regular text
       return part;
     });
   };
@@ -56,6 +54,7 @@ export default function PostCard({ post }: PostCardProps) {
             {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
           </p>
         </div>
+        <StatusPill status={post.status as Status} postId={post.id} />
       </CardHeader>
       <CardContent>
         <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
