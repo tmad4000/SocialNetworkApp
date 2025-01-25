@@ -13,16 +13,16 @@ interface PostFilterProps {
   onFilterChange: (showStatusOnly: boolean) => void;
   selectedStatuses?: Status[];
   onStatusesChange?: (statuses: Status[]) => void;
+  statusCounts?: Record<Status, number>;
 }
 
 export default function PostFilter({ 
   showStatusOnly, 
   onFilterChange, 
   selectedStatuses = STATUSES,
-  onStatusesChange = () => {} 
+  onStatusesChange = () => {},
+  statusCounts = {} 
 }: PostFilterProps) {
-  const [statusCounts, setStatusCounts] = useState({}); // Added state for status counts
-
   return (
     <div className="flex gap-2">
       <div className="flex">

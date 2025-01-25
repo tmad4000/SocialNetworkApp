@@ -54,7 +54,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
     return filtered;
   }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
-  // Calculate status counts
+  // Calculate status counts from all posts
   const statusCounts = useMemo(() => {
     if (!posts) return {};
     return posts.reduce((acc: Record<Status, number>, post) => {
@@ -81,6 +81,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
           onFilterChange={setShowStatusOnly}
           selectedStatuses={selectedStatuses}
           onStatusesChange={setSelectedStatuses}
+          statusCounts={statusCounts}
         />
       </div>
 
