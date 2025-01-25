@@ -65,8 +65,18 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate all post-related queries
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/user"] });
+      // Invalidate all user post queries
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const queryKey = query.queryKey[0];
+          return typeof queryKey === 'string' && (
+            queryKey.startsWith("/api/posts/user/") || 
+            queryKey === "/api/posts"
+          );
+        }
+      });
     },
     onError: (error) => {
       toast({
