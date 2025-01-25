@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -8,11 +8,12 @@ import LexicalEditor from "./lexical-editor";
 
 interface CreatePostProps {
   onSuccess?: () => void;
-  targetUserId?: number; // Add this prop for posting on other users' timelines
+  targetUserId?: number;
 }
 
 export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps) {
   const [content, setContent] = useState("");
+  const editorRef = useRef<{ clearContent: () => void }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -26,7 +27,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, targetUserId }), // Include targetUserId in the request
+        body: JSON.stringify({ content, targetUserId }),
         credentials: "include",
       });
 
@@ -38,6 +39,8 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
     },
     onSuccess: () => {
       setContent("");
+      // Clear the editor content
+      editorRef.current?.clearContent();
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
@@ -71,6 +74,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
             onChange={setContent}
             users={users || []}
             placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
+            ref={editorRef}
           />
           <div className="flex justify-end">
             <Button
