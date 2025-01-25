@@ -5,6 +5,7 @@ import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import type { Post, User, PostMention } from "@db/schema";
+import type { Status } from "@/components/ui/status-pill";
 
 interface PostFeedProps {
   userId?: number;
@@ -20,9 +21,10 @@ type PostWithDetails = Post & {
 export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(['none', 'not acknowledged', 'acknowledged', 'in progress', 'done']);
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
-    queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts", { status: showStatusOnly }],
+    queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts", { showStatusOnly, selectedStatuses }],
   });
 
   const filteredPosts = useMemo(() => {
@@ -30,7 +32,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
 
     // First apply status filter
     let filtered = showStatusOnly 
-      ? posts.filter(post => post.status !== 'none')
+      ? posts.filter(post => selectedStatuses.includes(post.status as Status))
       : posts;
 
     // Then apply search filter if there's a search query
@@ -45,7 +47,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
     }
 
     return filtered;
-  }, [posts, searchQuery, showStatusOnly]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
   return (
     <div className="space-y-6">
@@ -62,6 +64,8 @@ export default function PostFeed({ userId }: PostFeedProps) {
         <PostFilter 
           showStatusOnly={showStatusOnly} 
           onFilterChange={setShowStatusOnly}
+          selectedStatuses={selectedStatuses}
+          onStatusesChange={setSelectedStatuses}
         />
       </div>
 
