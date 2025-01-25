@@ -118,6 +118,7 @@ export function registerRoutes(app: Express): Server {
           id: users.id,
           username: users.username,
           avatar: users.avatar,
+          bio: users.bio,  // Added bio field
         })
         .from(users)
         .limit(100); // Limit to prevent loading too many users
