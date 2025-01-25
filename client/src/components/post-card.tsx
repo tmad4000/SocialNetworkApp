@@ -94,7 +94,7 @@ export default function PostCard({ post }: PostCardProps) {
                 </span>
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-4">
+            <CollapsibleContent className="mt-4 -mx-6">
               <CommentSection postId={post.id} />
             </CollapsibleContent>
           </Collapsible>
