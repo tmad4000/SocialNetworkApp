@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
 import { posts, users, friends, postMentions, postLikes, comments, commentLikes } from "@db/schema";
-import { eq, desc, and, or, inArray, ilike, sql } from "drizzle-orm";
+import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -348,7 +348,6 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
@@ -491,7 +490,6 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedUser);
   });
 
-
   // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
@@ -595,7 +593,7 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const allPosts = await db.query.posts.findMany({
-        where: showStatusOnly ? sql`${posts.status} != 'none'` : undefined,
+        where: showStatusOnly ? not(eq(posts.status, 'none')) : undefined,
         with: {
           user: {
             columns: {
@@ -650,7 +648,7 @@ export function registerRoutes(app: Express): Server {
       const userPosts = await db.query.posts.findMany({
         where: and(
           eq(posts.userId, userId),
-          showStatusOnly ? sql`${posts.status} != 'none'` : undefined
+          showStatusOnly ? not(eq(posts.status, 'none')) : undefined
         ),
         with: {
           user: {
