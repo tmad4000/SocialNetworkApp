@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import type { Post, User, PostMention } from "@db/schema";
 
 interface PostFeedProps {
@@ -47,14 +47,6 @@ export default function PostFeed({ userId }: PostFeedProps) {
     return filtered;
   }, [posts, searchQuery, showStatusOnly]);
 
-  if (isLoading) {
-    return <div className="text-center py-8">Loading posts...</div>;
-  }
-
-  if (!posts?.length) {
-    return <div className="text-center py-8 text-muted-foreground">No posts found</div>;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
@@ -72,7 +64,12 @@ export default function PostFeed({ userId }: PostFeedProps) {
           onFilterChange={setShowStatusOnly}
         />
       </div>
-      {filteredPosts.length === 0 ? (
+
+      {isLoading ? (
+        <div className="text-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
+        </div>
+      ) : filteredPosts.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">
           {searchQuery ? "No posts found matching your search." : "No posts yet"}
         </p>
