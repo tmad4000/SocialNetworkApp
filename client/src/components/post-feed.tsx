@@ -27,16 +27,25 @@ export default function PostFeed({ userId }: PostFeedProps) {
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
-    if (!searchQuery.trim()) return posts;
 
-    const query = searchQuery.toLowerCase();
-    return posts.filter(post => 
-      post.content.toLowerCase().includes(query) ||
-      post.mentions.some(mention => 
-        mention.mentionedUser.username.toLowerCase().includes(query)
-      )
-    );
-  }, [posts, searchQuery]);
+    // First apply status filter
+    let filtered = showStatusOnly 
+      ? posts.filter(post => post.status !== 'none')
+      : posts;
+
+    // Then apply search filter if there's a search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(post => 
+        post.content.toLowerCase().includes(query) ||
+        post.mentions.some(mention => 
+          mention.mentionedUser.username.toLowerCase().includes(query)
+        )
+      );
+    }
+
+    return filtered;
+  }, [posts, searchQuery, showStatusOnly]);
 
   if (isLoading) {
     return <div className="text-center py-8">Loading posts...</div>;
