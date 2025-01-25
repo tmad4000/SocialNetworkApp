@@ -68,7 +68,11 @@ export default function UsersPage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <FriendRequest userId={user.id} status={friendRequest?.status} />
+                  <FriendRequest 
+                    userId={user.id} 
+                    status={friendRequest?.status}
+                    requestId={friendRequest?.id}
+                  />
                 </div>
               </CardContent>
             </Card>
