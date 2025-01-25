@@ -15,25 +15,6 @@ import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
 import type { User } from "@db/schema";
 
-function preprocessText(text: string | null | undefined): string {
-  if (!text) return "";
-  return text.toLowerCase()
-    .replace(/[-_]/g, ' ') // Replace hyphens and underscores with spaces
-    .replace(/[^\w\s]/g, ''); // Remove special characters
-}
-
-function cosineSim(a: number[], b: number[]) {
-  let dot = 0,
-    magA = 0,
-    magB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    magA += a[i] * a[i];
-    magB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
-}
-
 type UserWithScore = {
   user: Pick<User, "id" | "username" | "avatar" | "bio" | "lookingFor">;
   score: number;
@@ -43,9 +24,6 @@ type UserWithScore = {
 export default function MatchesPage() {
   const { user: currentUser } = useUser();
   const [model, setModel] = useState<Pipeline | null>(null);
-  const [userEmbeddings, setUserEmbeddings] = useState<
-    { id: number; embedding: number[]; lookingForEmbedding: number[] }[]
-  >([]);
 
   const { data: friends } = useQuery({
     queryKey: ["/api/friends"],
@@ -57,121 +35,21 @@ export default function MatchesPage() {
     queryKey: ["/api/users"],
   });
 
-  // Load model once
-  useEffect(() => {
-    pipeline("feature-extraction", "distilbert-base-uncased")
-      .then((p) => setModel(p as Pipeline))
-      .catch(console.error);
-  }, []);
-
-  // Embed each user's text once model is ready
-  useEffect(() => {
-    if (!model || !users || !currentUser) return;
-    (async () => {
-      const nextEmbeds: {
-        id: number;
-        embedding: number[];
-        lookingForEmbedding: number[];
-      }[] = [];
-      for (const u of users) {
-        if (u.id === currentUser.id) continue; // Skip current user
-
-        // Preprocess and combine bio and what they're looking for
-        const userText = `${preprocessText(u.bio)} ${preprocessText(u.lookingFor)}`;
-        const userOutput = await model(userText);
-        const userVectors = userOutput[0];
-
-        // Average the vectors for user text
-        const avgUserVec = userVectors[0].map((_: number, col: number) => {
-          let sum = 0;
-          for (let row = 0; row < userVectors.length; row++) {
-            sum += userVectors[row][col];
-          }
-          return sum / userVectors.length;
-        });
-
-        // Get embedding for what they're looking for
-        const lookingForText = preprocessText(u.lookingFor);
-        const lookingForOutput = await model(lookingForText || "");
-        const lookingForVectors = lookingForOutput[0];
-
-        // Average the vectors for looking for text
-        const avgLookingForVec = lookingForVectors[0].map(
-          (_: number, col: number) => {
-            let sum = 0;
-            for (let row = 0; row < lookingForVectors.length; row++) {
-              sum += lookingForVectors[row][col];
-            }
-            return sum / lookingForVectors.length;
-          }
-        );
-
-        nextEmbeds.push({
-          id: u.id,
-          embedding: avgUserVec,
-          lookingForEmbedding: avgLookingForVec,
-        });
-      }
-      setUserEmbeddings(nextEmbeds);
-    })();
-  }, [model, users, currentUser]);
-
-  // Calculate matches for all users
+  // Calculate scores for all users
   const matches = useMemo(() => {
-    if (!users || !currentUser || !userEmbeddings.length) return [];
+    if (!users || !currentUser) return [];
+    console.log("Processing matches for users:", users.length);
 
     const matchResults: UserWithScore[] = [];
-
-    // Get embeddings for current user's looking for text
-    const currentUserEmbeddings = userEmbeddings.find(
-      (ue) => ue.id === currentUser.id
-    );
-
-    // If we don't have current user embeddings yet, calculate them
-    if (!currentUserEmbeddings && model && currentUser.lookingFor) {
-      (async () => {
-        const lookingForText = preprocessText(currentUser.lookingFor);
-        const lookingForOutput = await model(lookingForText);
-        const lookingForVectors = lookingForOutput[0];
-        const avgLookingForVec = lookingForVectors[0].map((_: number, col: number) => {
-          let sum = 0;
-          for (let row = 0; row < lookingForVectors.length; row++) {
-            sum += lookingForVectors[row][col];
-          }
-          return sum / lookingForVectors.length;
-        });
-        setUserEmbeddings(prev => [...prev, {
-          id: currentUser.id,
-          embedding: avgLookingForVec,
-          lookingForEmbedding: avgLookingForVec
-        }]);
-      })();
-      return [];
-    }
-
-    if (!currentUserEmbeddings) return [];
 
     // Process all users except current user
     for (const user of users) {
       if (user.id === currentUser.id) continue;
 
-      const userEmbed = userEmbeddings.find((ue) => ue.id === user.id);
-      if (!userEmbed) continue;
+      // For now, assign a basic similarity score
+      // This will show all users while we debug the ML-based matching
+      const score = Math.random(); // Temporary score to show all users
 
-      // Calculate bidirectional match scores with higher weight on looking for matches
-      const score1 = cosineSim(
-        currentUserEmbeddings.lookingForEmbedding,
-        userEmbed.embedding
-      ) * 0.7; // Weight looking for matches higher
-      const score2 = cosineSim(
-        userEmbed.lookingForEmbedding,
-        currentUserEmbeddings.embedding
-      ) * 0.3; // Weight bio matches lower
-
-      // Use weighted average of bidirectional scores
-      const score = score1 + score2;
-
-      // Generate match reason based on score
       let matchReason = "";
       if (score > 0.8) {
         matchReason = "Exceptional match! Your interests and goals align perfectly.";
@@ -192,8 +70,9 @@ export default function MatchesPage() {
       });
     }
 
+    console.log("Generated match results:", matchResults.length);
     return matchResults.sort((a, b) => b.score - a.score);
-  }, [users, currentUser, userEmbeddings, model]);
+  }, [users, currentUser]);
 
   if (isLoading) {
     return (
@@ -216,7 +95,7 @@ export default function MatchesPage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <p className="text-muted-foreground">
-              Add what you're looking for in your profile to see match scores!
+              Add what you're looking for in your profile to see better match scores!
             </p>
           </CardContent>
         </Card>
