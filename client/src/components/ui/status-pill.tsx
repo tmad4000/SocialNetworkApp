@@ -64,25 +64,85 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
 
       return res.json();
     },
-    onSuccess: () => {
-      // Invalidate all post-related queries
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      // Invalidate all user post queries
+    onMutate: async (newStatus) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ 
+        predicate: (query) => {
+          const queryKey = query.queryKey[0];
+          return typeof queryKey === 'string' && (
+            queryKey === "/api/posts" || 
+            queryKey.startsWith("/api/posts/user/")
+          );
+        }
+      });
+
+      // Snapshot the previous values
+      const previousData: { [key: string]: any } = {};
+      queryClient.getQueriesData({ 
+        predicate: (query) => {
+          const queryKey = query.queryKey[0];
+          return typeof queryKey === 'string' && (
+            queryKey === "/api/posts" || 
+            queryKey.startsWith("/api/posts/user/")
+          );
+        }
+      }).forEach(([queryKey, data]) => {
+        if (Array.isArray(queryKey)) {
+          const key = JSON.stringify(queryKey);
+          previousData[key] = data;
+        }
+      });
+
+      // Optimistically update all matching queries
+      const updatePost = (post: any) => {
+        if (post.id === postId) {
+          return { ...post, status: newStatus };
+        }
+        return post;
+      };
+
+      queryClient.getQueriesData({ 
+        predicate: (query) => {
+          const queryKey = query.queryKey[0];
+          return typeof queryKey === 'string' && (
+            queryKey === "/api/posts" || 
+            queryKey.startsWith("/api/posts/user/")
+          );
+        }
+      }).forEach(([queryKey]) => {
+        if (Array.isArray(queryKey)) {
+          queryClient.setQueryData(queryKey, (old: any) =>
+            Array.isArray(old) ? old.map(updatePost) : old
+          );
+        }
+      });
+
+      return { previousData };
+    },
+    onError: (err, newStatus, context) => {
+      // Revert the optimistic update
+      if (context) {
+        Object.entries(context.previousData).forEach(([queryKeyStr, data]) => {
+          const queryKey = JSON.parse(queryKeyStr);
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message,
+      });
+    },
+    onSettled: () => {
+      // Refetch to ensure our optimistic update matches server state
       queryClient.invalidateQueries({ 
         predicate: (query) => {
           const queryKey = query.queryKey[0];
           return typeof queryKey === 'string' && (
-            queryKey.startsWith("/api/posts/user/") || 
-            queryKey === "/api/posts"
+            queryKey === "/api/posts" || 
+            queryKey.startsWith("/api/posts/user/")
           );
         }
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
       });
     },
   });
@@ -93,9 +153,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       size="sm"
       className={`${config.bg} hover:${config.bg} ${config.color} gap-1.5`}
       onClick={() => updateStatus.mutate(config.next)}
-      disabled={updateStatus.isPending}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className={`h-4 w-4 ${updateStatus.isPending ? "animate-spin" : ""}`} />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );
