@@ -17,14 +17,21 @@ const crypto = {
     return `${buf.toString("hex")}.${salt}`;
   },
   compare: async (suppliedPassword: string, storedPassword: string) => {
-    const [hashedPassword, salt] = storedPassword.split(".");
-    const hashedPasswordBuf = Buffer.from(hashedPassword, "hex");
-    const suppliedPasswordBuf = (await scryptAsync(
-      suppliedPassword,
-      salt,
-      64
-    )) as Buffer;
-    return timingSafeEqual(hashedPasswordBuf, suppliedPasswordBuf);
+    const [hash, salt] = storedPassword.split(".");
+    if (!hash || !salt) {
+      console.error("Invalid stored password format");
+      return false;
+    }
+
+    const suppliedBuf = (await scryptAsync(suppliedPassword, salt, 64)) as Buffer;
+    const storedBuf = Buffer.from(hash, "hex");
+
+    try {
+      return timingSafeEqual(storedBuf, suppliedBuf);
+    } catch (error) {
+      console.error("Error comparing passwords:", error);
+      return false;
+    }
   },
 };
 
@@ -70,12 +77,15 @@ export function setupAuth(app: Express) {
         if (!user) {
           return done(null, false, { message: "Incorrect username." });
         }
+
         const isMatch = await crypto.compare(password, user.password);
         if (!isMatch) {
           return done(null, false, { message: "Incorrect password." });
         }
+
         return done(null, user);
       } catch (err) {
+        console.error("Authentication error:", err);
         return done(err);
       }
     })
@@ -155,8 +165,9 @@ export function setupAuth(app: Express) {
         .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
     }
 
-    const cb = (err: any, user: Express.User, info: IVerifyOptions) => {
+    passport.authenticate("local", (err: any, user: Express.User | false, info: IVerifyOptions) => {
       if (err) {
+        console.error("Login error:", err);
         return next(err);
       }
 
@@ -174,8 +185,7 @@ export function setupAuth(app: Express) {
           user: { id: user.id, username: user.username },
         });
       });
-    };
-    passport.authenticate("local", cb)(req, res, next);
+    })(req, res, next);
   });
 
   app.post("/api/logout", (req, res) => {
