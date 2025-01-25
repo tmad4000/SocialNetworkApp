@@ -66,12 +66,7 @@ export default function AuthPage() {
   };
 
   const handleTestLogin = () => {
-    // Create a test user if it doesn't exist
-    registerForm.setValue("username", "testuser");
-    registerForm.setValue("password", "123");
-    registerForm.handleSubmit(onRegister)();
-
-    // Then try to log in
+    // Only attempt login with test credentials
     loginForm.setValue("username", "testuser");
     loginForm.setValue("password", "123");
     loginForm.handleSubmit(onLogin)();
