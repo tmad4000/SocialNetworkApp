@@ -16,6 +16,7 @@ import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
+import PostFilter from "@/components/ui/post-filter";
 
 type FriendWithRelations = Friend & {
     user: {
@@ -38,6 +39,7 @@ export default function ProfilePage() {
   const [isEditingLookingFor, setIsEditingLookingFor] = useState(false);
   const [newLookingFor, setNewLookingFor] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showStatusOnly, setShowStatusOnly] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -166,8 +168,18 @@ export default function ProfilePage() {
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
+    likeCount: number;
+    liked: boolean;
   })[]>({
     queryKey: [`/api/posts/user/${params?.id}`],
+    queryFn: async ({ queryKey }) => {
+      const baseUrl = queryKey[0] as string;
+      const url = new URL(baseUrl, window.location.origin);
+      url.searchParams.set('status', showStatusOnly.toString());
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch posts');
+      return res.json();
+    }
   });
 
   const filteredPosts = useMemo(() => {
@@ -427,15 +439,21 @@ export default function ProfilePage() {
 
       <div className="space-y-6">
         <Separator className="my-8" />
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search posts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search posts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <PostFilter 
+              showStatusOnly={showStatusOnly} 
+              onFilterChange={setShowStatusOnly}
             />
           </div>
         </div>
