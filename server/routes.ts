@@ -8,6 +8,50 @@ import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add status update endpoint
+  app.put("/api/posts/:id/status", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    const { status } = req.body;
+    if (typeof status !== "string") {
+      return res.status(400).send("Status must be a string");
+    }
+
+    // Validate status
+    const validStatuses = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).send("Invalid status");
+    }
+
+    // Verify post exists and belongs to user
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    });
+
+    if (!post) {
+      return res.status(404).send("Post not found");
+    }
+
+    if (post.userId !== req.user.id) {
+      return res.status(403).send("Not authorized to update this post");
+    }
+
+    const [updatedPost] = await db
+      .update(posts)
+      .set({ status })
+      .where(eq(posts.id, postId))
+      .returning();
+
+    res.json(updatedPost);
+  });
+
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
@@ -151,42 +195,7 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-  // Posts with mentions
-  app.get("/api/posts", async (req, res) => {
-    const userId = req.user?.id;
-
-    try {
-      const allPosts = await db.query.posts.findMany({
-        with: {
-          user: {
-            columns: {
-              id: true,
-              username: true,
-              avatar: true,
-            },
-          },
-          mentions: {
-            with: {
-              mentionedUser: {
-                columns: {
-                  id: true,
-                  username: true,
-                  avatar: true,
-                }
-              }
-            }
-          }
-        },
-        orderBy: desc(posts.createdAt),
-      });
-
-      res.json(allPosts);
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-      res.status(500).json({ message: "Error fetching posts" });
-    }
-  });
-
+  // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -208,21 +217,22 @@ export function registerRoutes(app: Express): Server {
       }
     }
 
-    // Extract mentions from content using regex
-    const mentions = Array.from(content.matchAll(/@(\w+)/g));
-    const mentionedUsernames = mentions.map(match => match[1]);
+    // Extract mentions from content using regex with proper type handling
+    const mentionMatches = Array.from(content.matchAll(/@(\w+)/g));
+    const mentionedUsernames = mentionMatches.map(match => match[1]);
 
     // Find mentioned users
     const mentionedUsers = await db.query.users.findMany({
       where: inArray(users.username, mentionedUsernames),
     });
 
-    // Create post
+    // Create post with status
     const [newPost] = await db
       .insert(posts)
       .values({
         content,
         userId: req.user.id,
+        status: 'none', // Default status
       })
       .returning();
 
@@ -274,7 +284,42 @@ export function registerRoutes(app: Express): Server {
     res.json(postWithMentions);
   });
 
-  // User profile
+  // Posts with mentions
+  app.get("/api/posts", async (req, res) => {
+    const userId = req.user?.id;
+
+    try {
+      const allPosts = await db.query.posts.findMany({
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
+          },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          }
+        },
+        orderBy: desc(posts.createdAt),
+      });
+
+      res.json(allPosts);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      res.status(500).json({ message: "Error fetching posts" });
+    }
+  });
+
   app.get("/api/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     if (isNaN(userId)) {
@@ -299,6 +344,7 @@ export function registerRoutes(app: Express): Server {
 
     res.json(user);
   });
+
 
   // User posts
   app.get("/api/posts/user/:id", async (req, res) => {
