@@ -2,15 +2,23 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
+import type { Post, User, PostMention } from "@db/schema";
 
 interface PostFeedProps {
   userId?: number;
 }
 
+type PostWithDetails = Post & {
+  user: User;
+  mentions: (PostMention & { mentionedUser: User })[];
+  likeCount: number;
+  liked: boolean;
+};
+
 export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
-  
-  const { data: posts, isLoading } = useQuery({
+
+  const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts", { status: showStatusOnly }],
   });
 
@@ -24,7 +32,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end px-4">
+      <div className="flex justify-end px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
         <PostFilter 
           showStatusOnly={showStatusOnly} 
           onFilterChange={setShowStatusOnly}
