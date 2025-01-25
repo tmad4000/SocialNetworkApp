@@ -1,6 +1,38 @@
+# Dependencies
 node_modules
 dist
-.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+dist
+build
 server/public
+
+# IDE
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# System
+.DS_Store
+Thumbs.db
+
+# Vite
+*.timestamp-*.mjs
 vite.config.ts.*
 *.tar.gz
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
