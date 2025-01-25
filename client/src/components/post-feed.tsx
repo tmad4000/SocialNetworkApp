@@ -21,6 +21,7 @@ type PostWithDetails = Post & {
 export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(['none', 'not acknowledged', 'acknowledged', 'in progress', 'done']);
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts"],
@@ -32,7 +33,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
     // First apply status filter if enabled
     let filtered = posts;
     if (showStatusOnly) {
-      filtered = filtered.filter(post => post.status !== 'none');
+      filtered = filtered.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
     // Then apply search filter if there's a search query
@@ -47,7 +48,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
     }
 
     return filtered;
-  }, [posts, searchQuery, showStatusOnly]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
   return (
     <div className="space-y-6">
@@ -64,6 +65,8 @@ export default function PostFeed({ userId }: PostFeedProps) {
         <PostFilter 
           showStatusOnly={showStatusOnly} 
           onFilterChange={setShowStatusOnly}
+          selectedStatuses={selectedStatuses}
+          onStatusesChange={setSelectedStatuses}
         />
       </div>
 
