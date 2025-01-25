@@ -19,7 +19,16 @@ export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
-    queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts", { status: showStatusOnly }],
+    queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts"],
+    // Pass the status filter as a search parameter
+    queryFn: async ({ queryKey }) => {
+      const baseUrl = queryKey[0] as string;
+      const url = new URL(baseUrl, window.location.origin);
+      url.searchParams.set('status', showStatusOnly.toString());
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch posts');
+      return res.json();
+    }
   });
 
   if (isLoading) {
