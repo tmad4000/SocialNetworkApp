@@ -63,6 +63,12 @@ export default function AuthPage() {
     }
   };
 
+  const handleTestLogin = () => {
+    loginForm.setValue("username", "testuser");
+    loginForm.setValue("password", "testpass");
+    loginForm.handleSubmit(onLogin)();
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px]">
@@ -89,6 +95,14 @@ export default function AuthPage() {
                 />
                 <Button type="submit" className="w-full">
                   Login
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleTestLogin}
+                >
+                  Test Login
                 </Button>
               </form>
             </TabsContent>
