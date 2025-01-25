@@ -31,7 +31,9 @@ async function generateEmbeddings() {
           pooling: 'mean',
           normalize: true
         });
-        bioEmbedding = Array.from(await output.data);
+        // Convert Float32Array to regular array and ensure it's a proper JSON array
+        bioEmbedding = Array.from(output.data).map(x => Number(x));
+        console.log(`Bio embedding generated with length: ${bioEmbedding.length}`);
       }
 
       // Generate lookingFor embedding if exists
@@ -41,31 +43,41 @@ async function generateEmbeddings() {
           pooling: 'mean',
           normalize: true
         });
-        lookingForEmbedding = Array.from(await output.data);
+        // Convert Float32Array to regular array and ensure it's a proper JSON array
+        lookingForEmbedding = Array.from(output.data).map(x => Number(x));
+        console.log(`LookingFor embedding generated with length: ${lookingForEmbedding.length}`);
       }
 
-      // Check if user already has embeddings
-      const existingEmbedding = await db.query.userEmbeddings.findFirst({
-        where: eq(userEmbeddings.userId, user.id),
-      });
-
-      if (existingEmbedding) {
-        // Update existing embeddings
-        await db
-          .update(userEmbeddings)
-          .set({
-            bioEmbedding: bioEmbedding || existingEmbedding.bioEmbedding,
-            lookingForEmbedding: lookingForEmbedding || existingEmbedding.lookingForEmbedding,
-            updatedAt: new Date(),
-          })
-          .where(eq(userEmbeddings.userId, user.id));
-      } else {
-        // Create new embeddings
-        await db.insert(userEmbeddings).values({
-          userId: user.id,
-          bioEmbedding,
-          lookingForEmbedding,
+      try {
+        // Check if user already has embeddings
+        const existingEmbedding = await db.query.userEmbeddings.findFirst({
+          where: eq(userEmbeddings.userId, user.id),
         });
+
+        if (existingEmbedding) {
+          console.log(`Updating embeddings for user ${user.id}`);
+          // Update existing embeddings
+          await db
+            .update(userEmbeddings)
+            .set({
+              bioEmbedding: bioEmbedding ? bioEmbedding : existingEmbedding.bioEmbedding,
+              lookingForEmbedding: lookingForEmbedding ? lookingForEmbedding : existingEmbedding.lookingForEmbedding,
+              updatedAt: new Date(),
+            })
+            .where(eq(userEmbeddings.userId, user.id));
+        } else {
+          console.log(`Creating new embeddings for user ${user.id}`);
+          // Create new embeddings
+          await db.insert(userEmbeddings).values({
+            userId: user.id,
+            bioEmbedding,
+            lookingForEmbedding,
+          });
+        }
+        console.log(`Successfully saved embeddings for user ${user.id}`);
+      } catch (error) {
+        console.error(`Error saving embeddings for user ${user.id}:`, error);
+        throw error;
       }
 
       console.log(`Completed processing for user ${user.id}`);
