@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { Link } from "wouter";
 import type { Friend, User } from "@db/schema";
 
 export default function FriendRequestsMenu() {
@@ -50,6 +51,37 @@ export default function FriendRequestsMenu() {
     },
   });
 
+  const dismissRequest = useMutation({
+    mutationFn: async (requestId: number) => {
+      const res = await fetch("/api/friends/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      toast({
+        title: "Success",
+        description: "Friend request dismissed",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -69,15 +101,30 @@ export default function FriendRequestsMenu() {
           </DropdownMenuItem>
         ) : (
           friendRequests.map((request) => (
-            <DropdownMenuItem key={request.id} className="flex items-center justify-between">
-              <span>{request.user.username} wants to be friends</span>
-              <Button
-                size="sm"
-                onClick={() => acceptRequest.mutate(request.id)}
-                disabled={acceptRequest.isPending}
-              >
-                Accept
-              </Button>
+            <DropdownMenuItem key={request.id} className="flex flex-col items-stretch gap-2 p-4">
+              <div className="flex items-center justify-between">
+                <Link href={`/profile/${request.user.id}`}>
+                  <span className="text-primary hover:underline cursor-pointer">{request.user.username}</span>
+                </Link>
+                <span className="text-sm text-muted-foreground">wants to be friends</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => acceptRequest.mutate(request.id)}
+                  disabled={acceptRequest.isPending}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => dismissRequest.mutate(request.id)}
+                  disabled={dismissRequest.isPending}
+                >
+                  Dismiss
+                </Button>
+              </div>
             </DropdownMenuItem>
           ))
         )}
