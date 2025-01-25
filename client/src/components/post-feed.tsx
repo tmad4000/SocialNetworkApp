@@ -23,7 +23,9 @@ const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in prog
 export default function PostFeed({ userId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(STATUSES);
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
+    STATUSES.filter(status => status !== 'none')
+  );
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts"],
