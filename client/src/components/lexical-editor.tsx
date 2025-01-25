@@ -305,13 +305,16 @@ interface LexicalEditorProps {
   initialValue?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
   placeholder?: string;
+  onClear?: () => void;  // Add new prop for clearing the editor
 }
 
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function LexicalEditor({ onChange, initialValue = "", users, placeholder }: LexicalEditorProps) {
+export default function LexicalEditor({ onChange, initialValue = "", users, placeholder, onClear }: LexicalEditorProps) {
+  const [editor, setEditor] = useState<any>(null);
+
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot();
@@ -319,6 +322,19 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
       onChange?.(text);
     });
   }, [onChange]);
+
+  // Add method to clear editor content
+  const clearContent = useCallback(() => {
+    if (editor) {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        root.append(paragraph);
+      });
+      onClear?.();
+    }
+  }, [editor, onClear]);
 
   const initialConfig = {
     namespace: "SocialPostEditor",
