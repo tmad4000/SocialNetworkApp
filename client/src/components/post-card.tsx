@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
@@ -120,8 +120,8 @@ export default function PostCard({ post }: PostCardProps) {
     },
   });
 
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveEdit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!editedContent.trim()) return;
     editPost.mutate(editedContent);
   };
@@ -148,6 +148,53 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   const isOwner = currentUser?.id === post.user.id;
+
+  // Create initial editor state with mentions
+  const createInitialState = () => {
+    const mentionEditorState = {
+      root: {
+        children: [{
+          children: post.content.split(/(@\w+)/g).map(part => {
+            if (part.startsWith('@')) {
+              const username = part.slice(1);
+              const mention = post.mentions.find(m => m.mentionedUser.username === username);
+              if (mention) {
+                return {
+                  type: "mention",
+                  mentionName: username,
+                  text: part,
+                  detail: 0,
+                  format: 0,
+                  mode: "normal",
+                  style: "",
+                  version: 1
+                };
+              }
+            }
+            return {
+              type: "text",
+              text: part,
+              detail: 0,
+              format: 0,
+              mode: "normal",
+              style: ""
+            };
+          }),
+          direction: null,
+          format: "",
+          indent: 0,
+          type: "paragraph",
+          version: 1
+        }],
+        direction: null,
+        format: "",
+        indent: 0,
+        type: "root",
+        version: 1
+      }
+    };
+    return JSON.stringify(mentionEditorState);
+  };
 
   return (
     <Card>
@@ -203,7 +250,8 @@ export default function PostCard({ post }: PostCardProps) {
             <LexicalEditor
               onChange={setEditedContent}
               users={users || []}
-              initialValue={post.content}
+              initialState={createInitialState()}
+              onSubmit={handleSaveEdit}
             />
             <div className="flex justify-end gap-2">
               <Button

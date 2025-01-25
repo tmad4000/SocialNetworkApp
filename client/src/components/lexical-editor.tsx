@@ -11,6 +11,7 @@ import {
   COMMAND_PRIORITY_CRITICAL,
   KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
+  KEY_ENTER_COMMAND,
   $getSelection,
   $isRangeSelection,
   $createRangeSelection,
@@ -24,6 +25,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Command } from "lucide-react";
 
 // Custom MentionNode implementation
 export class MentionNode extends TextNode {
@@ -301,30 +303,66 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 }
 
 interface LexicalEditorProps {
-  onChange?: (text: string) => void;
+  onChange?: (text: string, rawState?: string) => void;
   initialValue?: string;
+  initialState?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
   placeholder?: string;
   onClear?: () => void;
+  onSubmit?: () => void;
 }
 
-function InitialValuePlugin({ initialValue }: { initialValue?: string }) {
+function InitialValuePlugin({ initialValue, initialState }: { initialValue?: string; initialState?: string }) {
   const [editor] = useLexicalComposerContext();
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!initialized && initialValue) {
+    if (!initialized && (initialValue || initialState)) {
       editor.update(() => {
         const root = $getRoot();
         if (root.getTextContent() === '') {
-          const paragraph = $createParagraphNode();
-          paragraph.append($createTextNode(initialValue));
-          root.append(paragraph);
+          if (initialState) {
+            // If we have a serialized state, use that
+            const parsedState = JSON.parse(initialState);
+            editor.setEditorState(editor.parseEditorState(parsedState));
+          } else if (initialValue) {
+            // Otherwise use plain text
+            const paragraph = $createParagraphNode();
+            paragraph.append($createTextNode(initialValue));
+            root.append(paragraph);
+          }
         }
       });
       setInitialized(true);
     }
-  }, [editor, initialValue, initialized]);
+  }, [editor, initialValue, initialState, initialized]);
+
+  return null;
+}
+
+function ShortcutPlugin({ onSubmit }: { onSubmit?: () => void }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (!onSubmit) return;
+
+    return editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event: KeyboardEvent) => {
+        const isMac = navigator.platform.toLowerCase().includes('mac');
+        const isModifierPressed = isMac ? event.metaKey : event.ctrlKey;
+
+        if (isModifierPressed && !event.shiftKey) {
+          event.preventDefault();
+          onSubmit();
+          return true;
+        }
+
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor, onSubmit]);
 
   return null;
 }
@@ -333,14 +371,24 @@ function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function LexicalEditor({ onChange, initialValue = "", users, placeholder, onClear }: LexicalEditorProps) {
+export default function LexicalEditor({
+  onChange,
+  initialValue = "",
+  initialState,
+  users,
+  placeholder,
+  onClear,
+  onSubmit,
+}: LexicalEditorProps) {
   const [editor, setEditor] = useState<any>(null);
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+  const shortcutText = `Press ${isMac ? '⌘' : 'Ctrl'}+Enter to ${onSubmit ? 'post' : 'save'}`;
 
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot();
       const text = root.getTextContent();
-      onChange?.(text);
+      onChange?.(text, JSON.stringify(editorState));
     });
   }, [onChange]);
 
@@ -375,7 +423,12 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
           }
           placeholder={
             <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
-              {placeholder || "What's on your mind? Use @ to mention users"}
+              <span>{placeholder || "What's on your mind? Use @ to mention users"}</span>
+              {onSubmit && (
+                <span className="ml-2 text-sm opacity-50">
+                  ({isMac ? <Command className="w-4 h-4 inline mb-0.5" /> : 'Ctrl'}+Enter to {onSubmit ? 'post' : 'save'})
+                </span>
+              )}
             </div>
           }
           ErrorBoundary={LexicalErrorBoundary}
@@ -383,7 +436,8 @@ export default function LexicalEditor({ onChange, initialValue = "", users, plac
         <OnChangePlugin onChange={onEditorChange} />
         <HistoryPlugin />
         <MentionsPlugin users={users} />
-        <InitialValuePlugin initialValue={initialValue} />
+        <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
+        <ShortcutPlugin onSubmit={onSubmit} />
       </div>
     </LexicalComposer>
   );

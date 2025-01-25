@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ interface CreatePostProps {
 
 export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps) {
   const [content, setContent] = useState("");
-  const editorRef = useRef<{ clearContent: () => void }>();
+  const [editorState, setEditorState] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -39,8 +39,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
     },
     onSuccess: () => {
       setContent("");
-      // Clear the editor content
-      editorRef.current?.clearContent();
+      setEditorState("");
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
@@ -60,8 +59,8 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!content.trim()) return;
     createPost.mutate(content);
   };
@@ -71,10 +70,13 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       <CardContent className="p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           <LexicalEditor
-            onChange={setContent}
+            onChange={(text, state) => {
+              setContent(text);
+              setEditorState(state || "");
+            }}
             users={users || []}
             placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
-            ref={editorRef}
+            onSubmit={handleSubmit}
           />
           <div className="flex justify-end">
             <Button
