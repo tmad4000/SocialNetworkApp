@@ -134,9 +134,11 @@ export default function ProfilePage() {
     },
     onSuccess: (data) => {
       setIsEditingLookingFor(false);
-      // Update both the user profile and the current user data
-      queryClient.setQueryData([`/api/user/${params?.id}`], data);
-      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
+      // Immediately update the cache with the new data
+      queryClient.setQueryData([`/api/user/${params?.id}`], (oldData: any) => ({
+        ...oldData,
+        ...data,
+      }));
       toast({
         title: "Success",
         description: "Looking for updated successfully",
