@@ -20,14 +20,14 @@ const statusConfig = {
   },
   acknowledged: {
     icon: Check,
-    color: 'text-blue-500',
-    bg: 'bg-blue-100',
+    color: 'text-yellow-500',
+    bg: 'bg-yellow-100',
     next: 'in progress' as Status,
   },
   'in progress': {
     icon: Loader2,
-    color: 'text-purple-500',
-    bg: 'bg-purple-100',
+    color: 'text-blue-500',
+    bg: 'bg-blue-100',
     next: 'done' as Status,
   },
   done: {
@@ -85,7 +85,7 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       onClick={() => updateStatus.mutate(config.next)}
       disabled={updateStatus.isPending}
     >
-      <Icon className={`h-4 w-4 ${status === 'in progress' ? 'animate-spin' : ''}`} />
+      <Icon className="h-4 w-4" />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );
