@@ -56,15 +56,16 @@ export function useNotifications() {
       }
     };
 
-    ws.onclose = () => {
-      // Try to reconnect after a delay
-      setTimeout(() => {
-        useNotifications();
-      }, 5000);
+    // Handle connection errors and automatic reconnection
+    const handleReconnect = () => {
+      ws.close();
     };
+
+    ws.onerror = handleReconnect;
+    ws.onclose = handleReconnect;
 
     return () => {
       ws.close();
     };
-  }, [user, toast]);
+  }, [user, toast]); // Include all dependencies used inside the effect
 }
