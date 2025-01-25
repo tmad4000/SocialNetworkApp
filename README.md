@@ -19,7 +19,7 @@ A modern social networking platform designed to facilitate professional and pers
 ## Prerequisites
 
 - Node.js (v18 or later)
-- PostgreSQL database
+- PostgreSQL database (local or remote)
 - npm or yarn package manager
 
 ## Installation
@@ -38,7 +38,14 @@ npm install
 3. Set up environment variables:
 Create a `.env` file in the root directory with:
 ```env
-DATABASE_URL=postgresql://<username>:<password>@<host>:<port>/<database>
+# For local PostgreSQL
+DATABASE_URL=postgresql://<username>:<password>@localhost:5432/<database>
+
+# For remote PostgreSQL (e.g., Neon, Supabase)
+DATABASE_URL=postgresql://<username>:<password>@<host>:<port>/<database>?sslmode=require
+
+# Optional: Override default port (5000)
+PORT=3000
 ```
 
 4. Push the database schema:
@@ -48,10 +55,38 @@ npm run db:push
 
 5. Start the development server:
 ```bash
+# Using default port (5000)
 npm run dev
+
+# Using custom port
+PORT=3000 npm run dev
 ```
 
-The application will be available at `http://localhost:5000`.
+The application will be available at `http://localhost:<PORT>`.
+
+## Connecting to Remote Databases
+
+### Using Neon Database
+
+1. Create a database on [Neon](https://neon.tech)
+2. Get your connection string from the Neon dashboard
+3. Add the connection string to your `.env` file:
+```env
+DATABASE_URL=postgresql://<username>:<password>@<host>/<database>?sslmode=require
+```
+
+### Common Database Issues
+
+1. SSL Mode: When using remote databases, ensure `sslmode=require` is added to the connection string
+2. Port Conflicts: If port 5000 is in use:
+   - Use the PORT environment variable: `PORT=3000 npm run dev`
+   - Check for and terminate any existing processes using the port:
+     ```bash
+     # Find process using port 5000
+     lsof -i :5000
+     # Kill the process
+     kill -9 <PID>
+     ```
 
 ## Development
 
