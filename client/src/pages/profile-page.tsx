@@ -18,6 +18,9 @@ import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
 import PostFilter from "@/components/ui/post-filter";
 
+type Status = 'none' | 'public' | 'private'; // inferred type
+const STATUSES: Status[] = ['none', 'public', 'private'];
+
 type FriendWithRelations = Friend & {
     user: {
       id: number;
@@ -40,6 +43,7 @@ export default function ProfilePage() {
   const [newLookingFor, setNewLookingFor] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showStatusOnly, setShowStatusOnly] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(STATUSES); // Added new state
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -176,23 +180,23 @@ export default function ProfilePage() {
     if (!posts) return [];
 
     // First apply status filter
-    let filtered = showStatusOnly 
-      ? posts.filter(post => post.status !== 'none')
+    let filtered = showStatusOnly
+      ? posts.filter((post) => selectedStatuses.includes(post.status as Status)) //Updated filter logic
       : posts;
 
     // Then apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(post => 
+      filtered = filtered.filter((post) =>
         post.content.toLowerCase().includes(query) ||
-        post.mentions.some(mention => 
+        post.mentions.some((mention) =>
           mention.mentionedUser.username.toLowerCase().includes(query)
         )
       );
     }
 
     return filtered;
-  }, [posts, searchQuery, showStatusOnly]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses]); //Added selectedStatuses to dependencies
 
   const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
@@ -453,6 +457,8 @@ export default function ProfilePage() {
             <PostFilter
               showStatusOnly={showStatusOnly}
               onFilterChange={setShowStatusOnly}
+              selectedStatuses={selectedStatuses} //Added prop
+              onStatusesChange={setSelectedStatuses} //Added prop
             />
           </div>
         </div>

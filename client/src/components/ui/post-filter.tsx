@@ -11,16 +11,18 @@ const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in prog
 interface PostFilterProps {
   showStatusOnly: boolean;
   onFilterChange: (showStatusOnly: boolean) => void;
-  selectedStatuses: Status[];
-  onStatusesChange: (statuses: Status[]) => void;
+  selectedStatuses?: Status[];
+  onStatusesChange?: (statuses: Status[]) => void;
 }
 
 export default function PostFilter({ 
   showStatusOnly, 
   onFilterChange, 
   selectedStatuses = STATUSES,
-  onStatusesChange 
+  onStatusesChange = () => {} 
 }: PostFilterProps) {
+  const [statusCounts, setStatusCounts] = useState({}); // Added state for status counts
+
   return (
     <div className="flex gap-2">
       <div className="flex">
@@ -72,6 +74,7 @@ export default function PostFilter({
                       className={`capitalize ${!showStatusOnly ? "text-muted-foreground" : ""}`}
                     >
                       {status === 'none' ? 'No Status' : status}
+                      {showStatusOnly && ` (${statusCounts[status] || 0})`}
                     </Label>
                   </div>
                 ))}
