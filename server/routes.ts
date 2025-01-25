@@ -202,6 +202,35 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add this endpoint after the existing comment likes endpoints
+  app.get("/api/comments/:id/likes", async (req, res) => {
+    const commentId = parseInt(req.params.id);
+    if (isNaN(commentId)) {
+      return res.status(400).json({ message: "Invalid comment ID" });
+    }
+
+    try {
+      const likes = await db.query.commentLikes.findMany({
+        where: eq(commentLikes.commentId, commentId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          }
+        },
+        orderBy: desc(commentLikes.createdAt),
+      });
+
+      res.json(likes);
+    } catch (error) {
+      console.error('Error fetching comment likes:', error);
+      res.status(500).json({ message: "Error fetching comment likes" });
+    }
+  });
+
   // Update the get comments endpoint to include likes
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
