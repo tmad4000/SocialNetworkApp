@@ -16,6 +16,7 @@ import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
+import PostFilter from "@/components/ui/post-filter";
 
 type FriendWithRelations = Friend & {
     user: {
@@ -38,6 +39,7 @@ export default function ProfilePage() {
   const [isEditingLookingFor, setIsEditingLookingFor] = useState(false);
   const [newLookingFor, setNewLookingFor] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showStatusOnly, setShowStatusOnly] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -172,16 +174,25 @@ export default function ProfilePage() {
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
-    if (!searchQuery.trim()) return posts;
 
-    const query = searchQuery.toLowerCase();
-    return posts.filter(post => 
-      post.content.toLowerCase().includes(query) ||
-      post.mentions.some(mention => 
-        mention.mentionedUser.username.toLowerCase().includes(query)
-      )
-    );
-  }, [posts, searchQuery]);
+    // First apply status filter
+    let filtered = showStatusOnly 
+      ? posts.filter(post => post.status !== 'none')
+      : posts;
+
+    // Then apply search filter if there's a search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(post => 
+        post.content.toLowerCase().includes(query) ||
+        post.mentions.some(mention => 
+          mention.mentionedUser.username.toLowerCase().includes(query)
+        )
+      );
+    }
+
+    return filtered;
+  }, [posts, searchQuery, showStatusOnly]);
 
   const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
@@ -429,13 +440,19 @@ export default function ProfilePage() {
         <Separator className="my-8" />
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search posts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+          <div className="flex items-center gap-4">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search posts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <PostFilter
+              showStatusOnly={showStatusOnly}
+              onFilterChange={setShowStatusOnly}
             />
           </div>
         </div>
