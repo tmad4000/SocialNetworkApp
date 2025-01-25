@@ -9,6 +9,7 @@ export const users = pgTable("users", {
   avatar: text("avatar"),
   bio: text("bio"),
   linkedinUrl: text("linkedin_url"),
+  lookingFor: text("looking_for"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

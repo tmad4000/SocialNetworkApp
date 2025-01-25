@@ -8,6 +8,26 @@ import { eq, desc, and, or, inArray, ilike } from "drizzle-orm";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add new Looking For update endpoint
+  app.put("/api/user/looking-for", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { lookingFor } = req.body;
+    if (typeof lookingFor !== "string") {
+      return res.status(400).send("Looking for must be a string");
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ lookingFor })
+      .where(eq(users.id, req.user.id))
+      .returning();
+
+    res.json(updatedUser);
+  });
+
   // Add new LinkedIn URL update endpoint
   app.put("/api/user/linkedin", async (req, res) => {
     if (!req.user) {

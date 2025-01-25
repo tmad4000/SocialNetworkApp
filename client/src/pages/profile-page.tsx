@@ -35,6 +35,8 @@ export default function ProfilePage() {
   const [isEditingLinkedIn, setIsEditingLinkedIn] = useState(false);
   const [newBio, setNewBio] = useState("");
   const [newLinkedInUrl, setNewLinkedInUrl] = useState("");
+  const [isEditingLookingFor, setIsEditingLookingFor] = useState(false);
+  const [newLookingFor, setNewLookingFor] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -108,6 +110,38 @@ export default function ProfilePage() {
     },
   });
 
+  const updateLookingFor = useMutation({
+    mutationFn: async (lookingFor: string) => {
+      const res = await fetch("/api/user/looking-for", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookingFor }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsEditingLookingFor(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${params?.id}`] });
+      toast({
+        title: "Success",
+        description: "Looking for updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
@@ -154,6 +188,16 @@ export default function ProfilePage() {
   const handleSaveLinkedIn = (e: React.FormEvent) => {
     e.preventDefault();
     updateLinkedInUrl.mutate(newLinkedInUrl);
+  };
+
+  const handleStartEditLookingFor = () => {
+    setNewLookingFor(user?.lookingFor || "");
+    setIsEditingLookingFor(true);
+  };
+
+  const handleSaveLookingFor = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateLookingFor.mutate(newLookingFor);
   };
 
   const acceptedFriends = friends?.reduce<{
@@ -267,6 +311,51 @@ export default function ProfilePage() {
                     variant="ghost"
                     size="icon"
                     onClick={handleStartEditLinkedIn}
+                    className="flex-shrink-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {isEditingLookingFor ? (
+              <form onSubmit={handleSaveLookingFor} className="space-y-2">
+                <Input
+                  value={newLookingFor}
+                  onChange={(e) => setNewLookingFor(e.target.value)}
+                  placeholder="What are you looking for? (e.g. Mentorship, Collaboration, Job Opportunities)"
+                  className="flex-1"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={updateLookingFor.isPending}>
+                    Save
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsEditingLookingFor(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground flex-1">
+                  {user?.lookingFor ? (
+                    <div>
+                      <strong>Looking for:</strong> {user.lookingFor}
+                    </div>
+                  ) : (
+                    <span>No looking for information added</span>
+                  )}
+                </span>
+                {isOwnProfile && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleStartEditLookingFor}
                     className="flex-shrink-0"
                   >
                     <Pencil className="h-4 w-4" />
