@@ -18,15 +18,18 @@ import {
 } from "@/components/ui/tooltip";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
-import type { User } from "@db/schema";
+import type { User, Friend } from "@db/schema";
 
 type UserWithScore = {
   user: Pick<User, "id" | "username" | "avatar" | "bio" | "lookingFor">;
   score: number;
   matchReason: string;
+  hasEmbeddings: boolean;
 };
 
 function cosineSim(a: number[], b: number[]) {
+  if (!a || !b || a.length !== b.length) return 0;
+
   let dot = 0,
     magA = 0,
     magB = 0;
@@ -38,7 +41,6 @@ function cosineSim(a: number[], b: number[]) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
 }
 
-// Fallback matching when embeddings aren't available
 function calculateBasicMatchScore(
   currentUser: Pick<User, "bio" | "lookingFor">,
   otherUser: Pick<User, "bio" | "lookingFor">
@@ -46,7 +48,7 @@ function calculateBasicMatchScore(
   const reasons: string[] = [];
   let totalScore = 0;
 
-  // Check if both users have at least some content
+  // Check if both users have content
   if (!currentUser.bio && !currentUser.lookingFor && !otherUser.bio && !otherUser.lookingFor) {
     return {
       score: 0.1,
@@ -54,15 +56,15 @@ function calculateBasicMatchScore(
     };
   }
 
-  // Simple text-based scoring as fallback
+  // Simple keyword-based scoring as fallback
   if (currentUser.lookingFor && otherUser.bio) {
-    totalScore += 0.5; // Give a moderate score for having matching fields
-    reasons.push("Their profile aligns with what you're looking for");
+    totalScore += 0.5;
+    reasons.push("Their profile contains keywords matching your interests");
   }
 
   if (otherUser.lookingFor && currentUser.bio) {
-    totalScore += 0.3; // Lower weight for reverse match
-    reasons.push("Your profile matches their interests");
+    totalScore += 0.3;
+    reasons.push("Your profile contains keywords matching their interests");
   }
 
   return {
@@ -74,15 +76,17 @@ function calculateBasicMatchScore(
 export default function MatchesPage() {
   const { user: currentUser } = useUser();
 
-  const { data: friends } = useQuery({
+  const { data: friends = [] } = useQuery<Friend[]>({
     queryKey: ["/api/friends"],
+    enabled: !!currentUser,
   });
 
   // Query for user embeddings
   const { data: userEmbeddings } = useQuery<{
     id: number;
-    bioEmbedding: number[];
-    lookingForEmbedding: number[];
+    userId: number;
+    bioEmbedding: number[] | null;
+    lookingForEmbedding: number[] | null;
   }[]>({
     queryKey: ["/api/user-embeddings"],
   });
@@ -102,7 +106,7 @@ export default function MatchesPage() {
 
     // Get current user's embeddings if available
     const currentUserEmbeddings = userEmbeddings?.find(
-      (ue) => ue.id === currentUser.id
+      (ue) => ue.userId === currentUser.id
     );
 
     // Process all users except current user
@@ -111,10 +115,12 @@ export default function MatchesPage() {
 
       let score = 0;
       let matchReason = "";
+      let hasEmbeddings = false;
 
       // Try embeddings-based matching first
       if (currentUserEmbeddings) {
-        const userEmbed = userEmbeddings?.find((ue) => ue.id === user.id);
+        const userEmbed = userEmbeddings?.find((ue) => ue.userId === user.id);
+        hasEmbeddings = !!userEmbed?.bioEmbedding || !!userEmbed?.lookingForEmbedding;
 
         if (userEmbed) {
           // Calculate bidirectional match scores
@@ -129,9 +135,9 @@ export default function MatchesPage() {
 
           // Generate semantic match reasons
           if (score > 0.7) {
-            matchReason = "Very strong semantic match based on profile analysis";
+            matchReason = "Strong semantic alignment between profiles";
           } else if (score > 0.5) {
-            matchReason = "Good semantic alignment between profiles";
+            matchReason = "Good semantic match based on profiles";
           } else if (score > 0.3) {
             matchReason = "Moderate semantic compatibility";
           } else {
@@ -166,6 +172,7 @@ export default function MatchesPage() {
         user,
         score,
         matchReason,
+        hasEmbeddings
       });
     }
 
@@ -201,15 +208,12 @@ export default function MatchesPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {matches.map(({ user: u, score, matchReason }) => {
-          const friendRequest = friends?.find(
+        {matches.map(({ user: u, score, matchReason, hasEmbeddings }) => {
+          const friendRequest = friends.find(
             (f) =>
               (f.userId === currentUser?.id && f.friendId === u.id) ||
               (f.userId === u.id && f.friendId === currentUser?.id)
           );
-
-          const userEmbed = userEmbeddings?.find((ue) => ue.id === u.id);
-          const hasEmbeddings = !!userEmbed?.bioEmbedding || !!userEmbed?.lookingForEmbedding;
 
           return (
             <Card key={u.id} className="hover:bg-accent transition-colors">
@@ -246,7 +250,7 @@ export default function MatchesPage() {
                                     <AlertCircle className="h-4 w-4 text-muted-foreground" />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Basic matching only - embeddings not yet available</p>
+                                    <p>Basic matching only - semantic embeddings not yet available</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>

@@ -7,15 +7,11 @@ async function generateEmbeddings() {
   console.log("Starting embeddings generation...");
 
   try {
-    // Get all users with either bio or lookingFor fields
-    const allUsers = await db.query.users.findMany({
-      where: (users, { or, isNotNull }) =>
-        or(isNotNull(users.bio), isNotNull(users.lookingFor)),
-    });
+    // Get all users
+    const allUsers = await db.query.users.findMany();
+    console.log(`Found ${allUsers.length} users to process`);
 
-    console.log(`Found ${allUsers.length} users with content to process`);
-
-    // Initialize the model - use a simpler model for faster processing
+    // Initialize the model
     const model = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
 
     for (const user of allUsers) {
@@ -24,29 +20,32 @@ async function generateEmbeddings() {
       let bioEmbedding = null;
       let lookingForEmbedding = null;
 
-      // Generate bio embedding if exists
-      if (user.bio) {
-        console.log(`Generating bio embedding for user ${user.id}`);
-        const output = await model(user.bio, {
-          pooling: 'mean',
-          normalize: true
-        });
-        // Convert Float32Array to regular array and ensure it's a proper JSON array
-        bioEmbedding = Array.from(output.data).map(x => Number(x));
-        console.log(`Bio embedding generated with length: ${bioEmbedding.length}`);
+      // Function to safely generate embeddings
+      async function generateEmbedding(text: string | null, fieldName: string) {
+        // Check for both null and empty string
+        if (!text?.trim()) {
+          console.log(`Skipping ${fieldName} embedding for user ${user.id} - no content`);
+          return null;
+        }
+
+        try {
+          console.log(`Generating ${fieldName} embedding for user ${user.id}`);
+          const output = await model(text, {
+            pooling: 'mean',
+            normalize: true
+          });
+          const embedding = Array.from(output.data).map(x => Number(x));
+          console.log(`${fieldName} embedding generated with length: ${embedding.length}`);
+          return embedding;
+        } catch (error) {
+          console.error(`Error generating ${fieldName} embedding for user ${user.id}:`, error);
+          return null;
+        }
       }
 
-      // Generate lookingFor embedding if exists
-      if (user.lookingFor) {
-        console.log(`Generating lookingFor embedding for user ${user.id}`);
-        const output = await model(user.lookingFor, {
-          pooling: 'mean',
-          normalize: true
-        });
-        // Convert Float32Array to regular array and ensure it's a proper JSON array
-        lookingForEmbedding = Array.from(output.data).map(x => Number(x));
-        console.log(`LookingFor embedding generated with length: ${lookingForEmbedding.length}`);
-      }
+      // Generate embeddings if content exists
+      bioEmbedding = await generateEmbedding(user.bio, 'bio');
+      lookingForEmbedding = await generateEmbedding(user.lookingFor, 'lookingFor');
 
       try {
         // Check if user already has embeddings
@@ -54,30 +53,32 @@ async function generateEmbeddings() {
           where: eq(userEmbeddings.userId, user.id),
         });
 
+        const embeddings = {
+          userId: user.id,
+          bioEmbedding,
+          lookingForEmbedding,
+          updatedAt: new Date(),
+        };
+
         if (existingEmbedding) {
-          console.log(`Updating embeddings for user ${user.id}`);
-          // Update existing embeddings
-          await db
-            .update(userEmbeddings)
-            .set({
-              bioEmbedding: bioEmbedding ? bioEmbedding : existingEmbedding.bioEmbedding,
-              lookingForEmbedding: lookingForEmbedding ? lookingForEmbedding : existingEmbedding.lookingForEmbedding,
-              updatedAt: new Date(),
-            })
-            .where(eq(userEmbeddings.userId, user.id));
+          if (bioEmbedding || lookingForEmbedding) {
+            console.log(`Updating embeddings for user ${user.id}`);
+            await db
+              .update(userEmbeddings)
+              .set(embeddings)
+              .where(eq(userEmbeddings.userId, user.id));
+          } else {
+            console.log(`No content to generate embeddings for user ${user.id}`);
+          }
         } else {
           console.log(`Creating new embeddings for user ${user.id}`);
-          // Create new embeddings
-          await db.insert(userEmbeddings).values({
-            userId: user.id,
-            bioEmbedding,
-            lookingForEmbedding,
-          });
+          await db.insert(userEmbeddings).values(embeddings);
         }
-        console.log(`Successfully saved embeddings for user ${user.id}`);
+
+        console.log(`Successfully processed embeddings for user ${user.id}`);
       } catch (error) {
         console.error(`Error saving embeddings for user ${user.id}:`, error);
-        throw error;
+        console.error('Error details:', error);
       }
 
       console.log(`Completed processing for user ${user.id}`);
@@ -85,7 +86,7 @@ async function generateEmbeddings() {
 
     console.log("Embedding generation completed successfully!");
   } catch (error) {
-    console.error("Error generating embeddings:", error);
+    console.error("Error during embedding generation:", error);
     process.exit(1);
   }
 
