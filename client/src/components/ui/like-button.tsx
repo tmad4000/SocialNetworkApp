@@ -18,6 +18,8 @@ export default function LikeButton({
   initialLikeCount,
 }: LikeButtonProps) {
   const [showLikesModal, setShowLikesModal] = useState(false);
+  const [optimisticLiked, setOptimisticLiked] = useState(initialLiked);
+  const [optimisticCount, setOptimisticCount] = useState(initialLikeCount);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -34,20 +36,27 @@ export default function LikeButton({
 
       return res.json();
     },
-    onSuccess: () => {
-      // Invalidate all relevant queries
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      // Invalidate any user-specific posts queries
-      queryClient.invalidateQueries({ 
-        predicate: (query) => 
-          query.queryKey[0].toString().startsWith("/api/posts/user/")
-      });
+    onMutate: () => {
+      // Optimistically update UI
+      setOptimisticLiked(!optimisticLiked);
+      setOptimisticCount(optimisticCount + (optimisticLiked ? -1 : 1));
     },
     onError: (error) => {
+      // Revert optimistic update on error
+      setOptimisticLiked(initialLiked);
+      setOptimisticCount(initialLikeCount);
       toast({
         variant: "destructive",
         title: "Error",
         description: error.message,
+      });
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries after successful update
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          query.queryKey[0].toString().startsWith("/api/posts/user/")
       });
     },
   });
@@ -65,18 +74,18 @@ export default function LikeButton({
           <Heart
             className={cn(
               "h-4 w-4",
-              initialLiked ? "fill-current text-red-500" : "text-muted-foreground"
+              optimisticLiked ? "fill-current text-red-500" : "text-muted-foreground"
             )}
           />
         </Button>
-        {initialLikeCount > 0 && (
+        {optimisticCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowLikesModal(true)}
             className="text-muted-foreground hover:text-foreground"
           >
-            {initialLikeCount} {initialLikeCount === 1 ? 'like' : 'likes'}
+            {optimisticCount} {optimisticCount === 1 ? 'like' : 'likes'}
           </Button>
         )}
       </div>
