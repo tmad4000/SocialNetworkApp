@@ -27,6 +27,7 @@ export default function AuthPage() {
 
   const onLogin = async (data: NewUser) => {
     try {
+      console.log('Attempting login with:', { username: data.username });
       const result = await login(data);
       if (!result.ok) {
         toast({
@@ -36,6 +37,7 @@ export default function AuthPage() {
         });
       }
     } catch (error) {
+      console.error('Login error:', error);
       toast({
         variant: "destructive",
         title: "Login failed",
@@ -64,6 +66,12 @@ export default function AuthPage() {
   };
 
   const handleTestLogin = () => {
+    // Create a test user if it doesn't exist
+    registerForm.setValue("username", "testuser");
+    registerForm.setValue("password", "123");
+    registerForm.handleSubmit(onRegister)();
+
+    // Then try to log in
     loginForm.setValue("username", "testuser");
     loginForm.setValue("password", "123");
     loginForm.handleSubmit(onLogin)();
