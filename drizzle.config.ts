@@ -1,3 +1,6 @@
+import { config } from "dotenv";
+config(); // Load environment variables
+
 import { defineConfig } from "drizzle-kit";
 
 if (!process.env.DATABASE_URL) {
