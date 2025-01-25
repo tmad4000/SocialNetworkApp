@@ -14,8 +14,8 @@ export default function PostFilter({ showStatusOnly, onFilterChange }: PostFilte
         variant="outline"
         size="sm"
         className={cn(
-          "gap-2",
-          showStatusOnly && "bg-accent/20 text-foreground"
+          "gap-2 transition-colors",
+          showStatusOnly && "bg-gray-200 text-black hover:bg-gray-300"
         )}
         onClick={() => onFilterChange(true)}
       >
@@ -26,8 +26,8 @@ export default function PostFilter({ showStatusOnly, onFilterChange }: PostFilte
         variant="outline"
         size="sm"
         className={cn(
-          "gap-2",
-          !showStatusOnly && "bg-accent/20 text-foreground"
+          "gap-2 transition-colors",
+          !showStatusOnly && "bg-gray-200 text-black hover:bg-gray-300"
         )}
         onClick={() => onFilterChange(false)}
       >
