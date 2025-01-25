@@ -139,14 +139,14 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add comments endpoints
+  // Add comments endpoints with proper error handling
   app.get("/api/posts/:id/comments", async (req, res) => {
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
     try {
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).json({ message: "Invalid post ID" });
+      }
+
       const postComments = await db.query.comments.findMany({
         where: eq(comments.postId, postId),
         with: {
@@ -169,28 +169,28 @@ export function registerRoutes(app: Express): Server {
   });
 
   app.post("/api/posts/:id/comments", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
-    const { content } = req.body;
-    if (!content || typeof content !== "string") {
-      return res.status(400).send("Content is required");
-    }
-
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).json({ message: "Invalid post ID" });
+      }
+
+      const { content } = req.body;
+      if (!content || typeof content !== "string") {
+        return res.status(400).json({ message: "Content is required" });
+      }
+
       // Verify post exists
       const post = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
       });
 
       if (!post) {
-        return res.status(404).send("Post not found");
+        return res.status(404).json({ message: "Post not found" });
       }
 
       // Create comment
@@ -378,82 +378,89 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Content is required");
     }
 
-    // If targetUserId is provided, verify it exists
-    if (targetUserId) {
-      const targetUser = await db.query.users.findFirst({
-        where: eq(users.id, targetUserId),
-      });
+    try {
+      // If targetUserId is provided, verify it exists
+      if (targetUserId) {
+        const targetUser = await db.query.users.findFirst({
+          where: eq(users.id, targetUserId),
+        });
 
-      if (!targetUser) {
-        return res.status(400).send("Target user not found");
+        if (!targetUser) {
+          return res.status(400).send("Target user not found");
+        }
       }
-    }
 
-    // Extract mentions from content using regex with proper type handling
-    const mentionMatches = Array.from(content.matchAll(/@(\w+)/g));
-    const mentionedUsernames = mentionMatches.map(match => match[1]);
+      // Extract mentions from content using regex
+      const mentionMatches = content.match(/@(\w+)/g) || [];
+      const mentionedUsernames = mentionMatches.map(match => match.substring(1));
 
-    // Find mentioned users
-    const mentionedUsers = await db.query.users.findMany({
-      where: inArray(users.username, mentionedUsernames),
-    });
-
-    // Create post with status
-    const [newPost] = await db
-      .insert(posts)
-      .values({
-        content,
-        userId: req.user.id,
-        status: 'none', // Default status
-      })
-      .returning();
-
-    // Create mentions
-    const mentionsToCreate = [
-      ...mentionedUsers.map(user => ({
-        postId: newPost.id,
-        mentionedUserId: user.id,
-      }))
-    ];
-
-    // If posting on someone's timeline, add them as a mention
-    if (targetUserId && targetUserId !== req.user.id) {
-      mentionsToCreate.push({
-        postId: newPost.id,
-        mentionedUserId: targetUserId,
+      // Find mentioned users
+      const mentionedUsers = await db.query.users.findMany({
+        where: inArray(users.username, mentionedUsernames),
       });
-    }
 
-    if (mentionsToCreate.length > 0) {
-      await db.insert(postMentions).values(mentionsToCreate);
-    }
+      // Create post with status
+      const [newPost] = await db
+        .insert(posts)
+        .values({
+          content,
+          userId: req.user.id,
+          status: 'none', // Default status
+        })
+        .returning();
 
-    // Return post with mentions
-    const postWithMentions = await db.query.posts.findFirst({
-      where: eq(posts.id, newPost.id),
-      with: {
-        user: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
+      // Create mentions
+      if (mentionedUsers.length > 0 || targetUserId) {
+        const mentionsToCreate = [
+          ...mentionedUsers.map(user => ({
+            postId: newPost.id,
+            mentionedUserId: user.id,
+          }))
+        ];
+
+        // If posting on someone's timeline, add them as a mention
+        if (targetUserId && targetUserId !== req.user.id) {
+          mentionsToCreate.push({
+            postId: newPost.id,
+            mentionedUserId: targetUserId,
+          });
+        }
+
+        if (mentionsToCreate.length > 0) {
+          await db.insert(postMentions).values(mentionsToCreate);
+        }
+      }
+
+      // Return post with mentions
+      const postWithMentions = await db.query.posts.findFirst({
+        where: eq(posts.id, newPost.id),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
           },
-        },
-        mentions: {
-          with: {
-            mentionedUser: {
-              columns: {
-                id: true,
-                username: true,
-                avatar: true,
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
               }
             }
           }
-        }
-      },
-    });
+        },
+      });
 
-    res.json(postWithMentions);
+      res.json(postWithMentions);
+    } catch (error) {
+      console.error('Error creating post:', error);
+      res.status(500).json({ message: "Error creating post" });
+    }
   });
 
   // Update the posts GET endpoint to include like information
