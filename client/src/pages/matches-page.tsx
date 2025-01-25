@@ -41,71 +41,28 @@ function calculateBasicMatchScore(
   const reasons: string[] = [];
   let totalScore = 0;
 
-  // Helper function to clean and tokenize text
-  const tokenize = (text: string | null | undefined) => {
-    return (text || "").toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 3);
-  };
+  // Check if both users have at least some content
+  if (!currentUser.bio && !currentUser.lookingFor && !otherUser.bio && !otherUser.lookingFor) {
+    return {
+      score: 0.1,
+      reasons: ["Complete your profile to get better matches"]
+    };
+  }
 
-  // Compare what current user is looking for with other user's bio
+  // Simple text-based scoring as fallback
   if (currentUser.lookingFor && otherUser.bio) {
-    const lookingForTokens = tokenize(currentUser.lookingFor);
-    const bioTokens = tokenize(otherUser.bio);
-
-    const matches = lookingForTokens.filter(token => 
-      bioTokens.some(bioToken => bioToken.includes(token) || token.includes(bioToken))
-    );
-
-    if (matches.length > 0) {
-      totalScore += 0.4 * (matches.length / lookingForTokens.length);
-      reasons.push(
-        `Their bio matches ${matches.length} keywords from what you're looking for`
-      );
-    }
+    totalScore += 0.5; // Give a moderate score for having matching fields
+    reasons.push("Their profile aligns with what you're looking for");
   }
 
-  // Compare what other user is looking for with current user's bio
   if (otherUser.lookingFor && currentUser.bio) {
-    const lookingForTokens = tokenize(otherUser.lookingFor);
-    const bioTokens = tokenize(currentUser.bio);
-
-    const matches = lookingForTokens.filter(token => 
-      bioTokens.some(bioToken => bioToken.includes(token) || token.includes(bioToken))
-    );
-
-    if (matches.length > 0) {
-      totalScore += 0.4 * (matches.length / lookingForTokens.length);
-      reasons.push(
-        `Your bio matches ${matches.length} keywords from what they're looking for`
-      );
-    }
+    totalScore += 0.3; // Lower weight for reverse match
+    reasons.push("Your profile matches their interests");
   }
-
-  // Compare both users' "looking for" fields for common interests
-  if (currentUser.lookingFor && otherUser.lookingFor) {
-    const currentTokens = tokenize(currentUser.lookingFor);
-    const otherTokens = tokenize(otherUser.lookingFor);
-
-    const matches = currentTokens.filter(token => 
-      otherTokens.some(otherToken => otherToken.includes(token) || token.includes(otherToken))
-    );
-
-    if (matches.length > 0) {
-      totalScore += 0.2 * (matches.length / Math.max(currentTokens.length, otherTokens.length));
-      reasons.push(
-        `You share similar goals: ${matches.join(", ")}`
-      );
-    }
-  }
-
-  // Ensure score is between 0 and 1
-  totalScore = Math.min(1, Math.max(0, totalScore));
 
   return {
-    score: totalScore,
-    reasons: reasons.length > 0 ? reasons : ["Match score based on profile text analysis"]
+    score: Math.min(1, totalScore),
+    reasons: reasons.length > 0 ? reasons : ["Basic profile compatibility"]
   };
 }
 
@@ -165,33 +122,23 @@ export default function MatchesPage() {
           // Weight the scores (70% what you're looking for, 30% what they're looking for)
           score = (bioSimilarity * 0.7) + (reverseSimilarity * 0.3);
 
-          // Generate detailed match reasons
-          const reasons = [];
+          // Generate semantic match reasons
           if (score > 0.7) {
-            if (bioSimilarity > 0.7) {
-              reasons.push("Their profile strongly matches what you're looking for");
-            }
-            if (reverseSimilarity > 0.7) {
-              reasons.push("Your profile strongly matches what they're looking for");
-            }
+            matchReason = "Very strong semantic match based on profile analysis";
           } else if (score > 0.5) {
-            if (bioSimilarity > 0.5) {
-              reasons.push("Their profile matches several aspects of what you're looking for");
-            }
-            if (reverseSimilarity > 0.5) {
-              reasons.push("Your profile aligns well with their preferences");
-            }
+            matchReason = "Good semantic alignment between profiles";
           } else if (score > 0.3) {
-            if (bioSimilarity > 0.3) {
-              reasons.push("There are some overlapping interests with what you're looking for");
-            }
-            if (reverseSimilarity > 0.3) {
-              reasons.push("You partially match their preferences");
-            }
+            matchReason = "Moderate semantic compatibility";
           } else {
-            reasons.push("Limited semantic match based on profile analysis");
+            matchReason = "Some semantic overlap in interests";
           }
-          matchReason = reasons.join(". ");
+
+          // Add specific details about match direction
+          if (bioSimilarity > reverseSimilarity) {
+            matchReason += ". Their profile strongly matches your preferences";
+          } else if (reverseSimilarity > bioSimilarity) {
+            matchReason += ". You strongly match what they're looking for";
+          }
         }
       }
 
