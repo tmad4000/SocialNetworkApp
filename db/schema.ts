@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
 
@@ -11,6 +11,14 @@ export const users = pgTable("users", {
   linkedinUrl: text("linkedin_url"),
   lookingFor: text("looking_for"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userEmbeddings = pgTable("user_embeddings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  bioEmbedding: jsonb("bio_embedding"),
+  lookingForEmbedding: jsonb("looking_for_embedding"),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const posts = pgTable("posts", {
@@ -58,7 +66,7 @@ export const friends = pgTable("friends", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   posts: many(posts),
   comments: many(comments),
   commentLikes: many(commentLikes),
@@ -66,6 +74,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
   receivedFriendRequests: many(friends, { relationName: "receivedFriendRequests" }),
+  embeddings: one(userEmbeddings),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -137,6 +146,13 @@ export const friendsRelations = relations(friends, ({ one }) => ({
   }),
 }));
 
+export const userEmbeddingsRelations = relations(userEmbeddings, ({ one }) => ({
+  user: one(users, {
+    fields: [userEmbeddings.userId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -171,3 +187,8 @@ export const insertFriendSchema = createInsertSchema(friends);
 export const selectFriendSchema = createSelectSchema(friends);
 export type Friend = typeof friends.$inferSelect;
 export type NewFriend = typeof friends.$inferInsert;
+
+export const insertUserEmbeddingSchema = createInsertSchema(userEmbeddings);
+export const selectUserEmbeddingSchema = createSelectSchema(userEmbeddings);
+export type UserEmbedding = typeof userEmbeddings.$inferSelect;
+export type NewUserEmbedding = typeof userEmbeddings.$inferInsert;

@@ -347,7 +347,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
@@ -359,13 +358,128 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Looking for must be a string");
     }
 
-    const [updatedUser] = await db
-      .update(users)
-      .set({ lookingFor })
-      .where(eq(users.id, req.user.id))
-      .returning();
+    try {
+      // Update user lookingFor
+      const [updatedUser] = await db
+        .update(users)
+        .set({ lookingFor })
+        .where(eq(users.id, req.user.id))
+        .returning();
 
-    res.json(updatedUser);
+      // Get user's current embeddings
+      const [userEmbedding] = await db
+        .select()
+        .from(userEmbeddings)
+        .where(eq(userEmbeddings.userId, req.user.id));
+
+      // Calculate new lookingFor embedding
+      const pipeline = await import("@xenova/transformers").then(m => m.pipeline);
+      const model = await pipeline("feature-extraction", "distilbert-base-uncased");
+      const output = await model(lookingFor || "");
+      const vectors = output[0];
+
+      // Average the vectors
+      const lookingForEmbedding = vectors[0].map((_: number, col: number) => {
+        let sum = 0;
+        for (let row = 0; row < vectors.length; row++) {
+          sum += vectors[row][col];
+        }
+        return sum / vectors.length;
+      });
+
+      // Update or create embeddings
+      if (userEmbedding) {
+        await db
+          .update(userEmbeddings)
+          .set({ lookingForEmbedding })
+          .where(eq(userEmbeddings.userId, req.user.id));
+      } else {
+        await db
+          .insert(userEmbeddings)
+          .values({
+            userId: req.user.id,
+            lookingForEmbedding,
+          });
+      }
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating looking for:', error);
+      res.status(500).json({ message: "Error updating looking for" });
+    }
+  });
+
+  // Add these endpoints after the user profile updates
+  app.get("/api/user-embeddings", async (req, res) => {
+    try {
+      const embeddings = await db.query.userEmbeddings.findMany();
+      res.json(embeddings);
+    } catch (error) {
+      console.error('Error fetching user embeddings:', error);
+      res.status(500).json({ message: "Error fetching user embeddings" });
+    }
+  });
+
+  // Add embeddings calculation to bio update
+  app.put("/api/user/bio", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { bio } = req.body;
+    if (typeof bio !== "string") {
+      return res.status(400).send("Bio must be a string");
+    }
+
+    try {
+      // Update user bio
+      const [updatedUser] = await db
+        .update(users)
+        .set({ bio })
+        .where(eq(users.id, req.user.id))
+        .returning();
+
+      // Get user's current embeddings
+      const [userEmbedding] = await db
+        .select()
+        .from(userEmbeddings)
+        .where(eq(userEmbeddings.userId, req.user.id));
+
+      // Calculate new bio embedding
+      const pipeline = await import("@xenova/transformers").then(m => m.pipeline);
+      const model = await pipeline("feature-extraction", "distilbert-base-uncased");
+      const output = await model(bio || "");
+      const vectors = output[0];
+
+      // Average the vectors
+      const bioEmbedding = vectors[0].map((_: number, col: number) => {
+        let sum = 0;
+        for (let row = 0; row < vectors.length; row++) {
+          sum += vectors[row][col];
+        }
+        return sum / vectors.length;
+      });
+
+      // Update or create embeddings
+      if (userEmbedding) {
+        await db
+          .update(userEmbeddings)
+          .set({ bioEmbedding })
+          .where(eq(userEmbeddings.userId, req.user.id));
+      } else {
+        await db
+          .insert(userEmbeddings)
+          .values({
+            userId: req.user.id,
+            bioEmbedding,
+          });
+      }
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating bio:', error);
+      res.status(500).json({ message: "Error updating bio" });
+    }
   });
 
   // Add new LinkedIn URL update endpoint
@@ -471,25 +585,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update bio
-  app.put("/api/user/bio", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const { bio } = req.body;
-    if (typeof bio !== "string") {
-      return res.status(400).send("Bio must be a string");
-    }
-
-    const [updatedUser] = await db
-      .update(users)
-      .set({ bio })
-      .where(eq(users.id, req.user.id))
-      .returning();
-
-    res.json(updatedUser);
-  });
+  // Update bio - This is replaced by the updated version in the edited snippet.
 
   // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
