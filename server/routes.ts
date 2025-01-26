@@ -4,6 +4,7 @@ import { setupAuth } from "./auth";
 import { db } from "@db";
 import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
+import { generateEmbedding, calculateCosineSimilarity } from "./embeddings";
 
 export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
@@ -382,6 +383,7 @@ export function registerRoutes(app: Express): Server {
   });
 
 
+
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -457,7 +459,6 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      // Update user lookingFor
       const [updatedUser] = await db
         .update(users)
         .set({ lookingFor })
@@ -467,30 +468,20 @@ export function registerRoutes(app: Express): Server {
       // Only attempt to generate embedding if lookingFor is not empty
       if (lookingFor.trim()) {
         try {
-          const { FlagEmbedding } = await import("fastembed");
-          const embedder = await FlagEmbedding.init();
-          const embeddings = await embedder.embed([lookingFor]);
+          const lookingForEmbedding = await generateEmbedding(lookingFor);
 
-          // Ensure embeddings[0] exists and is an array-like object before conversion
-          if (embeddings && embeddings[0]) {
-            const lookingForEmbedding = Array.from(embeddings[0]);
-
-            // Upsert the embedding
-            await db
-              .insert(userEmbeddings)
-              .values({
-                userId: req.user.id,
-                lookingForEmbedding,
-              })
-              .onConflictDoUpdate({
-                target: [userEmbeddings.userId],
-                set: { lookingForEmbedding },
-              });
-          } else {
-            console.error('Failed to generate lookingFor embedding: Empty embeddings result');
-          }
+          // Upsert the embedding
+          await db
+            .insert(userEmbeddings)
+            .values({
+              userId: req.user.id,
+              lookingForEmbedding,
+            })
+            .onConflictDoUpdate({
+              target: [userEmbeddings.userId],
+              set: { lookingForEmbedding },
+            });
         } catch (embeddingError) {
-          // Log embedding error but don't fail the request
           console.error('Error generating lookingFor embedding:', embeddingError);
         }
       }
@@ -533,28 +524,19 @@ export function registerRoutes(app: Express): Server {
       // Only attempt to generate embedding if bio is not empty
       if (bio.trim()) {
         try {
-          const { FlagEmbedding } = await import("fastembed");
-          const embedder = await FlagEmbedding.init();
-          const embeddings = await embedder.embed([bio]);
+          const bioEmbedding = await generateEmbedding(bio);
 
-          // Ensure embeddings[0] exists and is an array-like object before conversion
-          if (embeddings && embeddings[0]) {
-            const bioEmbedding = Array.from(embeddings[0]);
-
-            // Upsert the embedding
-            await db
-              .insert(userEmbeddings)
-              .values({
-                userId: req.user.id,
-                bioEmbedding,
-              })
-              .onConflictDoUpdate({
-                target: [userEmbeddings.userId],
-                set: { bioEmbedding },
-              });
-          } else {
-            console.error('Failed to generate bio embedding: Empty embeddings result');
-          }
+          // Upsert the embedding
+          await db
+            .insert(userEmbeddings)
+            .values({
+              userId: req.user.id,
+              bioEmbedding,
+            })
+            .onConflictDoUpdate({
+              target: [userEmbeddings.userId],
+              set: { bioEmbedding },
+            });
         } catch (embeddingError) {
           // Log embedding error but don't fail the request
           console.error('Error generating bio embedding:', embeddingError);
@@ -1121,13 +1103,43 @@ export function registerRoutes(app: Express): Server {
   });
 
   app.get("/api/posts/:id/related", async (req, res) => {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).json({ message: "Invalid post ID" });
+    }
+
     try {
-      const postId = parseInt(req.params.id);
-      if (isNaN(postId)) {
-        return res.status(400).json({ message: "Invalid post ID" });
+      // Get post with its embedding
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+        with: {
+          embedding: true
+        }
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
       }
 
-      // Get all other posts with embeddings
+      // If post has no embedding, generate one
+      if (!post.embedding) {
+        try {
+          const embedding = await generateEmbedding(post.content);
+
+          // Store embedding
+          await db.insert(postEmbeddings).values({
+            postId: post.id,
+            embedding,
+          });
+
+          post.embedding = { embedding };
+        } catch (error) {
+          console.error('Error generating post embedding:', error);
+          throw new Error("Failed to generate embedding for post");
+        }
+      }
+
+      // Get all other posts with their embeddings
       const allPosts = await db.query.posts.findMany({
         where: not(eq(posts.id, postId)),
         with: {
@@ -1151,66 +1163,17 @@ export function registerRoutes(app: Express): Server {
             }
           },
           likes: true,
-        },
-        orderBy: desc(posts.createdAt),
-      });
-
-      // Get the target post and its embedding
-      const post = await db.query.posts.findFirst({
-        where: eq(posts.id, postId),
-        with: {
-          embedding: true,
-        },
-      });
-
-      if (!post) {
-        return res.status(404).send("Post not found");
-      }
-
-      const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
-      const model = await FlagEmbedding.init({ normalize: true });
-
-      // Helper function to preprocess text
-      const preprocessText = (text: string): string => {
-        return text
-          .toLowerCase()
-          // Replace newlines with spaces
-          .replace(/\n+/g, ' ')
-          // Remove special characters except letters and spaces
-          .replace(/[^a-z\s]/g, ' ')
-          // Remove extra spaces
-          .replace(/\s+/g, ' ')
-          .trim();
-      };
-
-      // If post has no embedding, generate one
-      if (!post.embedding) {
-        const preprocessedContent = preprocessText(post.content);
-        const embeddings = await model.embed([preprocessedContent]);
-        if (!embeddings || !embeddings[0]) {
-          throw new Error("Failed to generate embedding for post");
         }
+      });
 
-        const embedding = Array.from(embeddings[0]);
-
-        // Store embedding
-        await db.insert(postEmbeddings).values({
-          postId,
-          embedding,
-        });
-
-        post.embedding = { embedding };
-      }
-
-      // Calculate similarity scores
-      const relatedPosts = await Promise.all(
+      // Calculate similarities and sort by relevance
+      const postsWithSimilarity = await Promise.all(
         allPosts
           .filter(p => p.embedding) // Only posts with embeddings
           .map(async (p) => {
-            // Calculate cosine similarity between embeddings
-            const similarity = post.embedding!.embedding.reduce(
-              (sum: number, a: number, i: number) => sum + a * (p.embedding!.embedding[i] as number),
-              0
+            const similarity = calculateCosineSimilarity(
+              post.embedding!.embedding as number[],
+              p.embedding!.embedding as number[]
             );
 
             return {
@@ -1223,65 +1186,48 @@ export function registerRoutes(app: Express): Server {
           })
       );
 
-      // Sort by similarity and return top 5
-      const topRelated = relatedPosts
+      // Sort by similarity and take top 5
+      const topRelated = postsWithSimilarity
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 5);
 
       res.json(topRelated);
     } catch (error) {
       console.error('Error finding related posts:', error);
-      res.status(500).json({ message: "Error finding related posts", error: (error as Error).message });
+      res.status(500).json({ 
+        message: "Error finding related posts",
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
+  // Add middleware to generate embeddings for new posts
   app.use(async (req, res, next) => {
-    const originalEnd = res.end;
-    // @ts-ignore
-    res.end = async function (...args) {
-      // Check if this was a POST to /api/posts that succeeded
-      if (req.method === 'POST' && req.path === '/api/posts' && res.statusCode === 200) {
-        try {
+    const oldJson = res.json;
+    res.json = async function(this: any, ...args: any[]) {
+      try {
+        if (req.method === 'POST' && req.path === '/api/posts') {
           const responseBody = JSON.parse(args[0].toString());
           if (responseBody.id) {
-            // Preprocess the text
-            const preprocessText = (text: string): string => {
-              return text
-                .toLowerCase()
-                // Replace newlines with spaces
-                .replace(/\n+/g, ' ')
-                // Remove special characters except letters and spaces
-                .replace(/[^a-z\s]/g, ' ')
-                // Remove extra spaces
-                .replace(/\s+/g, ' ')
-                .trim();
-            };
-
-            const preprocessedContent = preprocessText(responseBody.content);
-
             // Generate and store embedding
-            const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
-            const model = await FlagEmbedding.init({ normalize: true });
-            const embeddings = await model.embed([preprocessedContent]);
-            if (!embeddings || !embeddings[0]) {
-              throw new Error("Failed to generate embedding for post");
+            try {
+              const embedding = await generateEmbedding(responseBody.content);
+              await db.insert(postEmbeddings).values({
+                postId: responseBody.id,
+                embedding,
+              });
+            } catch (error) {
+              console.error('Error generating post embedding:', error);
             }
-            const embedding = Array.from(embeddings[0]);
-
-            await db.insert(postEmbeddings).values({
-              postId: responseBody.id,
-              embedding,
-            });
-
-            console.log('Generated embedding for post:', responseBody.id);
           }
-        } catch (error) {
-          console.error('Error generating embedding:', error);
         }
+      } catch (error) {
+        console.error('Error in post embedding middleware:', error);
       }
 
-      return originalEnd.apply(res, args as any);
+      return oldJson.apply(this, args);
     };
+
     next();
   });
 
