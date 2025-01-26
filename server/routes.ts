@@ -1102,47 +1102,20 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.get("/api/posts/:id/related", async (req, res) => {
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).json({ message: "Invalid post ID" });
-    }
+  const POST_SIMILARITY_THRESHOLD = 0; // Show all posts with their scores for debugging
 
+  app.get("/api/posts/:id/related", async (req, res) => {
     try {
-      // Get post with its embedding
-      const post = await db.query.posts.findFirst({
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).send("Invalid post ID");
+      }
+
+      // Get the source post with its embedding
+      const sourcePost = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
         with: {
-          embedding: true
-        }
-      });
-
-      if (!post) {
-        return res.status(404).send("Post not found");
-      }
-
-      // If post has no embedding, generate one
-      if (!post.embedding) {
-        try {
-          const embedding = await generateEmbedding(post.content);
-
-          // Store embedding
-          await db.insert(postEmbeddings).values({
-            postId: post.id,
-            embedding,
-          });
-
-          post.embedding = { embedding };
-        } catch (error) {
-          console.error('Error generating post embedding:', error);
-          throw new Error("Failed to generate embedding for post");
-        }
-      }
-
-      // Get all other posts with their embeddings
-      const allPosts = await db.query.posts.findMany({
-        where: not(eq(posts.id, postId)),
-        with: {
+          embedding: true,
           user: {
             columns: {
               id: true,
@@ -1150,7 +1123,6 @@ export function registerRoutes(app: Express): Server {
               avatar: true,
             }
           },
-          embedding: true,
           mentions: {
             with: {
               mentionedUser: {
@@ -1166,42 +1138,89 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      // Calculate similarities for all posts
-      const postsWithSimilarity = await Promise.all(
-        allPosts.map(async (p) => {
-          let similarity = 0;
+      if (!sourcePost || !sourcePost.embedding?.embedding) {
+        // If source post has no embedding, try to generate one
+        if (!sourcePost) {
+          return res.status(404).send("Post not found");
+        }
 
-          if (p.embedding) {
-            similarity = calculateCosineSimilarity(
-              post.embedding!.embedding as number[],
-              p.embedding.embedding as number[]
-            );
-          }
+        try {
+          const embedding = await generateEmbedding(sourcePost.content);
+          await db
+            .insert(postEmbeddings)
+            .values({
+              postId,
+              embedding,
+            })
+            .onConflictDoUpdate({
+              target: [postEmbeddings.postId],
+              set: { embedding },
+            });
+          sourcePost.embedding = { embedding };
+        } catch (error) {
+          console.error("Error generating post embedding:", error);
+          throw new Error("Failed to generate embedding for post");
+        }
+      }
+
+      // Get all other posts with their embeddings
+      const allPosts = await db.query.posts.findMany({
+        where: not(eq(posts.id, postId)), // Exclude the source post
+        with: {
+          embedding: true,
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          },
+          likes: true,
+        }
+      });
+
+      // Calculate similarity scores for all posts
+      const postsWithScores = allPosts
+        .map(post => {
+          // Calculate similarity if the post has an embedding
+          const similarity = post.embedding?.embedding
+            ? calculateCosineSimilarity(
+                sourcePost.embedding.embedding,
+                post.embedding.embedding
+              )
+            : 0;
 
           return {
-            ...p,
-            likeCount: p.likes.length,
-            liked: req.user ? p.likes.some(like => like.userId === req.user.id) : false,
+            ...post,
             similarity,
+            likeCount: post.likes.length,
+            liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
             likes: undefined, // Remove the likes array from the response
           };
         })
-      );
+        // Sort by similarity score in descending order
+        .sort((a, b) => b.similarity - a.similarity)
+        // Filter posts below threshold (for debugging, showing all posts)
+        .filter(post => post.similarity >= POST_SIMILARITY_THRESHOLD);
 
-      // Sort by similarity (descending) but return all posts
-      const sortedPosts = postsWithSimilarity.sort((a, b) => b.similarity - a.similarity);
-
-      res.json(sortedPosts);
+      res.json(postsWithScores);
     } catch (error) {
-      console.error('Error finding related posts:', error);
-      res.status(500).json({ 
-        message: "Error finding related posts",
-        error: error instanceof Error ? error.message : String(error)
-      });
+      console.error("Error finding related posts:", error);
+      res.status(500).send("Error finding related posts");
     }
   });
 
-  // Add middleware to generate embeddings for new posts
   app.use(async (req, res, next) => {
     const oldJson = res.json;
     res.json = async function(this: any, ...args: any[]) {
