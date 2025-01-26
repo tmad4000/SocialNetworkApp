@@ -29,6 +29,11 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
     enabled: isOpen,
   });
 
+  const { data: sourcePost } = useQuery<RelatedPost>({
+    queryKey: [`/api/posts/${postId}`],
+    enabled: isOpen,
+  });
+
   if (!isOpen) {
     return (
       <Button
@@ -76,7 +81,7 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
                 <div className="mt-1 text-xs font-mono bg-muted p-2 rounded overflow-x-auto">
                   Content similarity between:
                   <br />
-                  Source: {post.content}
+                  Source: {sourcePost?.content || 'Loading...'}
                   <br />
                   Target: {post.content}
                 </div>
