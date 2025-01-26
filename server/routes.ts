@@ -494,9 +494,8 @@ export function registerRoutes(app: Express): HTTPServer {
       // Calculate new bio embedding if bio is not empty
       if (bio) {
         try {
-          const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
-          const model = new FlagEmbedding({ normalize: true });
-          const embeddings = await model.embed([bio]);
+          const { FlagEmbedding } = await import("fastembed");
+          const embeddings = await new FlagEmbedding({ normalize: true }).embed([bio]);
           const bioEmbedding = Array.from(embeddings[0]);
 
           // Update or create embeddings
