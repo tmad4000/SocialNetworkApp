@@ -397,12 +397,12 @@ export function registerRoutes(app: Express): Server {
   // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
-      return res.status(401).send("Not authenticated");
+      return res.status(401).json({ message: "Not authenticated" });
     }
 
     const { lookingFor } = req.body;
     if (typeof lookingFor !== "string") {
-      return res.status(400).send("Looking for must be a string");
+      return res.status(400).json({ message: "Looking for must be a string" });
     }
 
     try {
@@ -413,40 +413,35 @@ export function registerRoutes(app: Express): Server {
         .where(eq(users.id, req.user.id))
         .returning();
 
-      // Get user's current embeddings
-      const [userEmbedding] = await db
-        .select()
-        .from(userEmbeddings)
-        .where(eq(userEmbeddings.userId, req.user.id));
+      // Only attempt to generate embedding if lookingFor is not empty
+      if (lookingFor.trim()) {
+        try {
+          const { FlagEmbedding } = await import("fastembed");
+          const embedder = await FlagEmbedding.init();
+          const embeddings = await embedder.embed([lookingFor]);
 
-      // Calculate new lookingFor embedding
-      const pipeline = await import("@xenova/transformers").then(m => m.pipeline);
-      const model = await pipeline("feature-extraction", "distilbert-base-uncased");
-      const output = await model(lookingFor || "");
-      const vectors = output[0];
+          // Ensure embeddings[0] exists and is an array-like object before conversion
+          if (embeddings && embeddings[0]) {
+            const lookingForEmbedding = Array.from(embeddings[0]);
 
-      // Average the vectors
-      const lookingForEmbedding = vectors[0].map((_: number, col: number) => {
-        let sum = 0;
-        for (let row = 0; row < vectors.length; row++) {
-          sum += vectors[row][col];
+            // Upsert the embedding
+            await db
+              .insert(userEmbeddings)
+              .values({
+                userId: req.user.id,
+                lookingForEmbedding,
+              })
+              .onConflictDoUpdate({
+                target: [userEmbeddings.userId],
+                set: { lookingForEmbedding },
+              });
+          } else {
+            console.error('Failed to generate lookingFor embedding: Empty embeddings result');
+          }
+        } catch (embeddingError) {
+          // Log embedding error but don't fail the request
+          console.error('Error generating lookingFor embedding:', embeddingError);
         }
-        return sum / vectors.length;
-      });
-
-      // Update or create embeddings
-      if (userEmbedding) {
-        await db
-          .update(userEmbeddings)
-          .set({ lookingForEmbedding })
-          .where(eq(userEmbeddings.userId, req.user.id));
-      } else {
-        await db
-          .insert(userEmbeddings)
-          .values({
-            userId: req.user.id,
-            lookingForEmbedding,
-          });
       }
 
       res.json(updatedUser);
@@ -1043,8 +1038,7 @@ export function registerRoutes(app: Express): Server {
             }
           },
           likes: true,
-        },
-      });
+        },      });
 
       if (!post) {        return res.status(404).send("Post not found");
       }
