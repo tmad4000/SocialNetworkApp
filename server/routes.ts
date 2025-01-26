@@ -1,8 +1,8 @@
 import type { Express } from "express";
-import { createServer, type Server as HTTPServer } from "http";
+import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes, comments, commentLikes } from "@db/schema";
+import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { WebSocket, WebSocketServer } from 'ws';
 
@@ -16,7 +16,7 @@ function broadcastToUser(userId: number, notification: any) {
   }
 }
 
-export function registerRoutes(app: Express): HTTPServer {
+export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
   // Add status update endpoint
@@ -467,55 +467,43 @@ export function registerRoutes(app: Express): HTTPServer {
     }
   });
 
-  // Add embeddings calculation to bio update
+  // Bio update endpoint with proper error handling
   app.put("/api/user/bio", async (req, res) => {
     if (!req.user) {
-      return res.status(401).send("Not authenticated");
+      return res.status(401).json({ message: "Not authenticated" });
     }
 
     const { bio } = req.body;
     if (typeof bio !== "string") {
-      return res.status(400).send("Bio must be a string");
+      return res.status(400).json({ message: "Bio must be a string" });
     }
 
     try {
-      // Update user bio
+      // First update the user bio
       const [updatedUser] = await db
         .update(users)
         .set({ bio })
         .where(eq(users.id, req.user.id))
         .returning();
 
-      // Get user's current embeddings
-      const userEmbedding = await db.query.userEmbeddings.findFirst({
-        where: eq(userEmbeddings.userId, req.user.id),
-      });
+      // Only attempt to generate embedding if bio is not empty
+      if (bio.trim()) {
+        const { FlagEmbedding } = await import("fastembed");
+        const embedder = await FlagEmbedding.init();
+        const embeddings = await embedder.embed([bio]);
+        const bioEmbedding = Array.from(embeddings[0]);
 
-      // Calculate new bio embedding if bio is not empty
-      if (bio) {
-        try {
-          const { FlagEmbedding } = await import("fastembed");
-          const embeddings = await new FlagEmbedding({ normalize: true }).embed([bio]);
-          const bioEmbedding = Array.from(embeddings[0]);
-
-          // Update or create embeddings
-          if (userEmbedding) {
-            await db
-              .update(userEmbeddings)
-              .set({ bioEmbedding })
-              .where(eq(userEmbeddings.userId, req.user.id));
-          } else {
-            await db
-              .insert(userEmbeddings)
-              .values({
-                userId: req.user.id,
-                bioEmbedding,
-              });
-          }
-        } catch (error) {
-          // Log error but don't fail the request
-          console.error('Error calculating bio embedding:', error);
-        }
+        // Upsert the embedding
+        await db
+          .insert(userEmbeddings)
+          .values({
+            userId: req.user.id,
+            bioEmbedding,
+          })
+          .onConflictDoUpdate({
+            target: [userEmbeddings.userId],
+            set: { bioEmbedding },
+          });
       }
 
       res.json(updatedUser);
@@ -627,7 +615,6 @@ export function registerRoutes(app: Express): HTTPServer {
       res.status(500).json({ message: "Error fetching users" });
     }
   });
-
 
   // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
@@ -1049,8 +1036,7 @@ export function registerRoutes(app: Express): HTTPServer {
         },
       });
 
-      if (!post) {
-        return res.status(404).send("Post not found");
+      if (!post) {        return res.status(404).send("Post not found");
       }
 
       const postWithLikeInfo = {
@@ -1265,13 +1251,40 @@ export function registerRoutes(app: Express): HTTPServer {
 
   // Add after the existing GET /api/posts endpoint
 
-  // Update the related posts endpoint
   app.get("/api/posts/:id/related", async (req, res) => {
     try {
       const postId = parseInt(req.params.id);
       if (isNaN(postId)) {
-        return res.status(400).send("Invalid post ID");
+        return res.status(400).json({ message: "Invalid post ID" });
       }
+
+      // Get all other posts with embeddings
+      const allPosts = await db.query.posts.findMany({
+        where: not(eq(posts.id, postId)),
+        with: {
+          embedding: true,
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          },
+          likes: true,
+        },
+        orderBy: desc(posts.createdAt),
+      });
 
       // Get the target post and its embedding
       const post = await db.query.posts.findFirst({
@@ -1302,41 +1315,13 @@ export function registerRoutes(app: Express): HTTPServer {
         post.embedding = { embedding };
       }
 
-      // Get all other posts with embeddings
-      const allPosts = await db.query.posts.findMany({
-        where: not(eq(posts.id, postId)),
-        with: {
-          embedding: true,
-          user: {
-            columns: {
-              id: true,
-              username: true,
-              avatar: true,
-            }
-          },
-          likes: true,
-          mentions: {
-            with: {
-              mentionedUser: {
-                columns: {
-                  id: true,
-                  username: true,
-                  avatar: true,
-                }
-              }
-            }
-          }
-        },
-        orderBy: desc(posts.createdAt),
-      });
-
       // Calculate similarity scores
       const relatedPosts = await Promise.all(
         allPosts
           .filter(p => p.embedding) // Only posts with embeddings
           .map(async (p) => {
             const similarity = post.embedding!.embedding.reduce(
-              (sum: number, a: number, i: number) => sum + a * (p.embedding!.embedding[i] as number), 
+              (sum: number, a: number, i: number) => sum + a * (p.embedding!.embedding[i] as number),
               0
             );
 
