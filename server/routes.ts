@@ -1047,7 +1047,7 @@ export function registerRoutes(app: Express): Server {
         },
         likes: true,
       },
-    });
+        });
 
     // Transform response to include like count and liked status
     const response = {
@@ -1216,18 +1216,31 @@ export function registerRoutes(app: Express): Server {
 
           // Only calculate similarity if both posts have embeddings
           if (post.embedding?.embedding && sourcePost.embedding?.embedding) {
-            // Handle the embeddings which are stored as unknown type
-            const sourceEmbedding = sourcePost.embedding.embedding as number[];
-            const targetEmbedding = post.embedding.embedding as number[];
+            try {
+              // Parse the embeddings from JSON if they're stored as strings
+              const sourceEmbedding = typeof sourcePost.embedding.embedding === 'string'
+                ? Object.values(JSON.parse(sourcePost.embedding.embedding)[0])
+                : sourcePost.embedding.embedding;
 
-            if (sourceEmbedding.length > 0 && targetEmbedding.length > 0) {
-              try {
-                similarity = calculateCosineSimilarity(sourceEmbedding, targetEmbedding);
-              } catch (error) {
-                console.error('Error calculating similarity:', error);
-                console.error('Source embedding:', sourceEmbedding.length);
-                console.error('Target embedding:', targetEmbedding.length);
+              const targetEmbedding = typeof post.embedding.embedding === 'string'
+                ? Object.values(JSON.parse(post.embedding.embedding)[0])
+                : post.embedding.embedding;
+
+              if (sourceEmbedding.length === targetEmbedding.length) {
+                similarity = calculateCosineSimilarity(
+                  sourceEmbedding,
+                  targetEmbedding
+                );
+              } else {
+                console.error('Embedding length mismatch:', {
+                  sourceLength: sourceEmbedding.length,
+                  targetLength: targetEmbedding.length
+                });
               }
+            } catch (error) {
+              console.error('Error calculating similarity:', error);
+              console.error('Source embedding type:', typeof sourcePost.embedding.embedding);
+              console.error('Target embedding type:', typeof post.embedding.embedding);
             }
           }
 
@@ -1253,29 +1266,30 @@ export function registerRoutes(app: Express): Server {
   app.use(async (req, res, next) => {
     const oldJson = res.json;
     res.json = async function(this: any, ...args: any[]) {
-      try {
-        if (req.method === 'POST' && req.path === '/api/posts') {
-          const responseBody = JSON.parse(args[0].toString());
-          if (responseBody.id) {
-            // Generate and store embedding
-            try {
-              const embedding = await generateEmbedding(responseBody.content);
-              await db.insert(postEmbeddings).values({
-                postId: responseBody.id,
-                embedding,
-              });
-            } catch (error) {
-              console.error('Error generating post embedding:', error);
-            }
-          }
+      const body = args[0];
+
+      // Check if this is a new post being created
+      if (req.method === 'POST' && req.path === '/api/posts' && body?.id) {
+        try {
+          const embedding = await generateEmbedding(body.content);
+          await db
+            .insert(postEmbeddings)
+            .values({
+              postId: body.id,
+              embedding,
+            })
+            .onConflictDoUpdate({
+              target: [postEmbeddings.postId],
+              set: { embedding }
+            });
+          console.log(`Generated embedding for new post ${body.id}`);
+        } catch (error) {
+          console.error('Error generating embedding for new post:', error);
         }
-      } catch (error) {
-        console.error('Error in post embedding middleware:', error);
       }
 
       return oldJson.apply(this, args);
     };
-
     next();
   });
 
