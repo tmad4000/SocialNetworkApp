@@ -957,7 +957,7 @@ export function registerRoutes(app: Express): Server {
         where: eq(posts.groupId, groupId),
       });
 
-      // Delete all related records in the correct order
+      // Delete all related records in the correct order to handle foreign key constraints
       for (const post of groupPosts) {
         // First delete post embeddings
         await db.delete(postEmbeddings).where(eq(postEmbeddings.postId, post.id));
@@ -1868,6 +1868,37 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error removing friendship:', error);
       res.status(500).send("Error removing friendship");
+    }
+  });
+
+  // Add new group members endpoint
+  app.get("/api/groups/:id/members", async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      const groupMembers = await db.query.groupMembers.findMany({
+        where: eq(groupMembers.groupId, groupId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          }
+        },
+        orderBy: desc(groupMembers.joinedAt),
+      });
+
+      // Transform the response to just include user information
+      const members = groupMembers.map(member => member.user);
+      res.json(members);
+    } catch (error) {
+      console.error('Error fetching group members:', error);
+      res.status(500).send("Error fetching group members");
     }
   });
 
