@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/hooks/use-user";
-import { Users, Sparkles } from "lucide-react";
+import { Users, Users2, Sparkles } from "lucide-react";
 import FriendRequestsMenu from "@/components/friend-requests-menu";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +29,19 @@ export default function Navbar() {
             >
               <Users className="h-4 w-4" />
               Users
+            </Button>
+          </Link>
+          <Link href="/groups">
+            <Button 
+              variant={location === "/groups" ? "secondary" : "ghost"} 
+              size="sm" 
+              className={cn(
+                "gap-2",
+                location === "/groups" && "bg-accent"
+              )}
+            >
+              <Users2 className="h-4 w-4" />
+              Groups
             </Button>
           </Link>
           <Link href="/matches">

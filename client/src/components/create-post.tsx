@@ -11,9 +11,10 @@ import SplitPostsDialog from "./split-posts-dialog";
 interface CreatePostProps {
   onSuccess?: () => void;
   targetUserId?: number;
+  groupId?: number;
 }
 
-export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps) {
+export default function CreatePost({ onSuccess, targetUserId, groupId }: CreatePostProps) {
   const [content, setContent] = useState("");
   const [editorState, setEditorState] = useState("");
   const [showSplitDialog, setShowSplitDialog] = useState(false);
@@ -32,7 +33,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, targetUserId }),
+        body: JSON.stringify({ content, targetUserId, groupId }),
         credentials: "include",
       });
 
@@ -55,9 +56,15 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
         root.append(paragraph);
       });
 
+      // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
+      }
+      if (groupId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
+        // Also invalidate group membership as posting adds you to the group
+        queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
       }
       onSuccess?.();
       toast({
@@ -112,6 +119,12 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
     createPost.mutate(content);
   };
 
+  const placeholderText = groupId 
+    ? "Share something with the group..."
+    : targetUserId 
+      ? "Write something on their timeline..." 
+      : "What's on your mind? Use @ to mention users";
+
   return (
     <>
       <Card>
@@ -123,7 +136,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
                 setEditorState(state || "");
               }}
               users={users || []}
-              placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
+              placeholder={placeholderText}
               onSubmit={handleSubmit}
               setEditor={setEditor}
               editorState={editorState}
