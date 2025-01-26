@@ -5,6 +5,10 @@ import { db } from "@db";
 import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { WebSocket, WebSocketServer } from 'ws';
+import session from 'express-session';
+import { parse } from 'url';
+import type { IncomingMessage } from 'http';
+import MemoryStore from 'memorystore';
 
 // Map to store active WebSocket connections with error handling
 const connectedClients = new Map<number, WebSocket>();
@@ -30,20 +34,52 @@ function broadcastToUser(userId: number, notification: any) {
 export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
 
+  // Get session middleware instance with ESM imports
+  const MemoryStoreClass = MemoryStore(session);
+  const sessionParser = session({
+    secret: process.env.SESSION_SECRET || 'keyboard cat',
+    resave: false,
+    saveUninitialized: false,
+    store: new MemoryStoreClass({
+      checkPeriod: 86400000 // prune expired entries every 24h
+    }),
+    cookie: { 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    }
+  });
+
+  app.use(sessionParser);
+
   // Initialize WebSocket server
   const wss = new WebSocketServer({ 
-    server: httpServer,
-    path: '/ws'
+    noServer: true // Important: use noServer mode
+  });
+
+  // Handle upgrade with session parsing
+  httpServer.on('upgrade', function(request: IncomingMessage, socket, head) {
+    const { pathname } = parse(request.url || '', true);
+
+    if (pathname === '/ws') {
+      sessionParser(request as any, {} as any, () => {
+        if (!(request as any).session?.passport?.user) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        wss.handleUpgrade(request, socket, head, function(ws) {
+          wss.emit('connection', ws, request);
+        });
+      });
+    } else {
+      socket.destroy();
+    }
   });
 
   // WebSocket connection handling
-  wss.on('connection', (ws: WebSocket, req: any) => {
-    if (!req.session?.passport?.user) {
-      ws.close(1008, 'Authentication required');
-      return;
-    }
-
-    const userId = req.session.passport.user;
+  wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
+    const userId = (request as any).session.passport.user;
     console.log(`WebSocket connected for user ${userId}`);
 
     // Store the connection
@@ -67,6 +103,124 @@ export function registerRoutes(app: Express): Server {
   });
 
   setupAuth(app);
+
+  // Friend request routes
+  app.post("/api/friends/request", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { friendId } = req.body;
+    if (!friendId || typeof friendId !== "number") {
+      return res.status(400).send("Friend ID is required");
+    }
+
+    try {
+      const friend = await db.query.users.findFirst({
+        where: eq(users.id, friendId),
+      });
+
+      if (!friend) {
+        return res.status(404).send("User not found");
+      }
+
+      // Check if request already exists
+      const existingRequest = await db.query.friends.findFirst({
+        where: and(
+          or(
+            and(
+              eq(friends.userId, req.user.id),
+              eq(friends.friendId, friendId)
+            ),
+            and(
+              eq(friends.userId, friendId),
+              eq(friends.friendId, req.user.id)
+            )
+          )
+        ),
+      });
+
+      if (existingRequest) {
+        return res.status(400).send("Friend request already exists");
+      }
+
+      // Create friend request
+      const [newRequest] = await db
+        .insert(friends)
+        .values({
+          userId: req.user.id,
+          friendId,
+          status: "pending",
+        })
+        .returning();
+
+      // Send real-time notification to the recipient
+      broadcastToUser(friendId, {
+        type: 'FRIEND_REQUEST',
+        data: {
+          requestId: newRequest.id,
+          userId: req.user.id,
+          username: req.user.username,
+          action: 'sent you a friend request'
+        }
+      });
+
+      res.json(newRequest);
+    } catch (error) {
+      console.error('Error creating friend request:', error);
+      res.status(500).send("Error creating friend request");
+    }
+  });
+
+  app.post("/api/friends/accept", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { requestId } = req.body;
+    if (!requestId) {
+      return res.status(400).send("Request ID is required");
+    }
+
+    try {
+      const friendRequest = await db.query.friends.findFirst({
+        where: eq(friends.id, requestId),
+        with: {
+          user: true
+        }
+      });
+
+      if (!friendRequest) {
+        return res.status(404).send("Friend request not found");
+      }
+
+      if (friendRequest.friendId !== req.user.id) {
+        return res.status(403).send("Not authorized to accept this request");
+      }
+
+      const [updatedRequest] = await db
+        .update(friends)
+        .set({ status: "accepted" })
+        .where(eq(friends.id, requestId))
+        .returning();
+
+      // Send real-time notification to the sender
+      broadcastToUser(friendRequest.userId, {
+        type: 'FRIEND_REQUEST_ACCEPTED',
+        data: {
+          requestId: updatedRequest.id,
+          userId: req.user.id,
+          username: req.user.username,
+          action: 'accepted your friend request'
+        }
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      res.status(500).send("Error accepting friend request");
+    }
+  });
 
   app.put("/api/posts/:id/status", async (req, res) => {
     if (!req.user) {
@@ -887,7 +1041,7 @@ export function registerRoutes(app: Express): Server {
           likes: undefined,
         }))
       ].sort((a, b) =>
-        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
       );
 
       // Remove duplicates (in case a user is both creator and mentioned)
@@ -1038,7 +1192,7 @@ export function registerRoutes(app: Express): Server {
     const response = {
       ...postWithMentions,
       likeCount: postWithMentions?.likes.length || 0,
-      liked: postWithMentions?.likes.some(like => like.userId === req.user?..id) || false,
+      liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
       likes: undefined, // Remove the likes array from the response
     };
 
@@ -1105,41 +1259,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Error deleting post", error: error.message });
     }
   });
-
-  // Set up WebSocket server
-  //const wss = new WebSocketServer({ noServer: true });
-
-  // Handle WebSocket upgrade requests
-  //httpServer.on('upgrade', (request, socket, head) => {
-  //  const protocol = request.headers['sec-websocket-protocol'];
-  //  // Skip vite HMR connections
-  //  if (protocol === 'vite-hmr') {
-  //    return;
-  //  }
-
-  //  // @ts-ignore req.session is added by express-session
-  //  if (!request.session?.passport?.user) {
-  //    socket.destroy();
-  //    return;
-  //  }
-
-  //  wss.handleUpgrade(request, socket, head, (ws) => {
-  //    wss.emit('connection', ws, request);
-  //  });
-  //});
-
-  // Handle WebSocket connections
-  //wss.on('connection', (ws, request) => {
-  //  // @ts-ignore req.session is added by express-session
-  //  const userId = request.session?.passport?.user?.id;
-  //  if (!userId) return;
-
-  //  connectedClients.set(userId, ws);
-
-  //  ws.on('close', () => {
-  //    connectedClients.delete(userId);
-  //  });
-  //});
 
   app.get("/api/posts/:id/related", async (req, res) => {
     try {

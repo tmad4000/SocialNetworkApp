@@ -10,10 +10,86 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Link } from "wouter";
 import type { Friend, User } from "@db/schema";
+import { useEffect, useRef } from "react";
 
 export default function FriendRequestsMenu() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Set up WebSocket connection
+  useEffect(() => {
+    const connectWebSocket = () => {
+      // Get the correct WebSocket protocol based on page protocol
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'FRIEND_REQUEST') {
+            // Invalidate friends query to refresh the list
+            queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+
+            // Show notification toast
+            toast({
+              title: "New Friend Request",
+              description: `${data.data.username} ${data.data.action}`,
+            });
+          } else if (data.type === 'FRIEND_REQUEST_ACCEPTED') {
+            // Invalidate friends query to refresh the list
+            queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+
+            // Show notification toast
+            toast({
+              title: "Friend Request Accepted",
+              description: `${data.data.username} ${data.data.action}`,
+            });
+          }
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Failed to establish real-time connection. Retrying...",
+        });
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
+        // Try to reconnect after a delay, unless it was closed intentionally
+        if (event.code !== 1000) {
+          setTimeout(() => {
+            console.log('Attempting to reconnect WebSocket...');
+            if (wsRef.current?.readyState === WebSocket.CLOSED) {
+              connectWebSocket();
+            }
+          }, 5000);
+        }
+      };
+    };
+
+    // Initial connection
+    connectWebSocket();
+
+    // Clean up on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounting');
+      }
+    };
+  }, [queryClient, toast]);
 
   const { data: friendRequests } = useQuery<(Friend & { user: User })[]>({
     queryKey: ["/api/friends"],
@@ -21,7 +97,6 @@ export default function FriendRequestsMenu() {
       const currentUser = queryClient.getQueryData(['user']) as User;
       return friends
         .filter(f => f.friendId === currentUser?.id && f.status === 'pending')
-        // Sort by most recent first (assuming friendRequests have a createdAt field)
         .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
     },
   });
