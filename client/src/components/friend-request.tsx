@@ -1,14 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/hooks/use-user";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
+import { useUser } from "@/hooks/use-user";
 
 interface FriendRequestProps {
   userId: number;
@@ -103,7 +103,38 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
       toast({
         title: "Success",
-        description: "Friend request canceled",
+        description: "Friend request dismissed",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
+  });
+
+  const removeFriend = useMutation({
+    mutationFn: async (friendshipId: number) => {
+      const res = await fetch("/api/friends/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendshipId }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      toast({
+        title: "Success",
+        description: "Friend removed",
       });
     },
     onError: (error) => {
@@ -117,9 +148,21 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
 
   if (status === "accepted") {
     return (
-      <Button variant="secondary" disabled>
-        Friends
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary">
+            Friends <MoreHorizontal className="ml-2 h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() => requestId && removeFriend.mutate(requestId)}
+          >
+            Remove Friend
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 

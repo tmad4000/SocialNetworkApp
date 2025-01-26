@@ -1386,5 +1386,41 @@ export function registerRoutes(app: Express): Server {
     res.json({ message: "Friend request dismissed" });
   });
 
+  app.post("/api/friends/remove", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { friendshipId } = req.body;
+    if (!friendshipId) {
+      return res.status(400).send("Friendship ID is required");
+    }
+
+    try {
+      const friendship = await db.query.friends.findFirst({
+        where: eq(friends.id, friendshipId),
+      });
+
+      if (!friendship) {
+        return res.status(404).send("Friendship not found");
+      }
+
+      // Check if the user is part of this friendship
+      if (friendship.userId !== req.user.id && friendship.friendId !== req.user.id) {
+        return res.status(403).send("Not authorized to remove this friendship");
+      }
+
+      // Delete the friendship
+      await db
+        .delete(friends)
+        .where(eq(friends.id, friendshipId));
+
+      res.json({ message: "Friendship removed successfully" });
+    } catch (error) {
+      console.error('Error removing friendship:', error);
+      res.status(500).send("Error removing friendship");
+    }
+  });
+
   return httpServer;
 }
