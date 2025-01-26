@@ -77,8 +77,8 @@ export default function GroupPage() {
 
   const toggleMembership = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/groups/${params?.id}/membership`, {
-        method: group?.isMember ? "DELETE" : "POST",
+      const res = await fetch(`/api/groups/${params?.id}/${group?.isMember ? 'leave' : 'join'}`, {
+        method: "POST",
         credentials: "include",
       });
 

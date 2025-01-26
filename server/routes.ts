@@ -952,9 +952,44 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).send("Only group creator can delete the group");
       }
 
-      // Delete all related records first
+      // Get all posts in the group
+      const groupPosts = await db.query.posts.findMany({
+        where: eq(posts.groupId, groupId),
+      });
+
+      // Delete all related records in the correct order
+      for (const post of groupPosts) {
+        // First delete post embeddings
+        await db.delete(postEmbeddings).where(eq(postEmbeddings.postId, post.id));
+        // Then delete post likes
+        await db.delete(postLikes).where(eq(postLikes.postId, post.id));
+        // Then delete post mentions
+        await db.delete(postMentions).where(eq(postMentions.postId, post.id));
+      }
+
+      // Now delete all comments and their likes
+      const postIds = groupPosts.map(p => p.id);
+      if (postIds.length > 0) {
+        const groupComments = await db.query.comments.findMany({
+          where: inArray(comments.postId, postIds),
+        });
+
+        // Delete comment likes first
+        for (const comment of groupComments) {
+          await db.delete(commentLikes).where(eq(commentLikes.commentId, comment.id));
+        }
+
+        // Then delete comments
+        await db.delete(comments).where(inArray(comments.postId, postIds));
+      }
+
+      // Delete group members
       await db.delete(groupMembers).where(eq(groupMembers.groupId, groupId));
+
+      // Delete posts
       await db.delete(posts).where(eq(posts.groupId, groupId));
+
+      // Finally delete the group
       await db.delete(groups).where(eq(groups.id, groupId));
 
       res.json({ message: "Group deleted successfully" });
