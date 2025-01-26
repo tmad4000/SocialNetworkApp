@@ -3,10 +3,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import type { User } from "@db/schema";
+import type { User, Group } from "@db/schema";
 import LexicalEditor from "./lexical-editor";
 import { $getRoot, $createParagraphNode } from 'lexical';
 import SplitPostsDialog from "./split-posts-dialog";
+import { useUser } from "@/hooks/use-user";
 
 interface CreatePostProps {
   onSuccess?: () => void;
@@ -22,13 +23,14 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editor, setEditor] = useState<any>(null);
+  const { user: currentUser } = useUser();
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
     staleTime: 60000,
   });
 
-  const { data: group } = useQuery({
+  const { data: group } = useQuery<Group & { creator: User }>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: !!groupId,
   });
@@ -49,7 +51,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       return res.json();
     },
     onMutate: async (newContent) => {
-      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       if (groupId) {
         await queryClient.cancelQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
@@ -60,41 +62,63 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
       // Create optimistic post
       const optimisticPost = {
-        id: -1, // Temporary ID
+        id: Date.now(), // Use timestamp as temporary ID
         content: newContent,
         createdAt: new Date().toISOString(),
         status: 'none',
-        userId: -1,
+        userId: currentUser?.id,
+        user: currentUser,
         mentions: [],
-        user: group?.creator || {}, // Will be replaced with actual user data
         likeCount: 0,
         liked: false,
-        group: groupId && group ? {
+      };
+
+      if (groupId && group) {
+        optimisticPost.group = {
           id: group.id,
           name: group.name,
           description: group.description,
           createdAt: group.createdAt,
-          createdBy: group.createdBy,
-        } : undefined,
-      };
+          createdBy: group.creator.id,
+          creator: group.creator,
+        };
+      }
 
-      // Update all relevant queries with optimistic data
+      // Update query caches
       const queries = [
         ["/api/posts"],
         groupId ? [`/api/groups/${groupId}/posts`] : null,
         targetUserId ? [`/api/posts/user/${targetUserId}`] : null,
       ].filter(Boolean);
 
+      const previousPosts: Record<string, any> = {};
+
       queries.forEach(queryKey => {
         if (queryKey) {
-          const previousPosts = queryClient.getQueryData(queryKey) as any[];
-          queryClient.setQueryData(queryKey, previousPosts ? [optimisticPost, ...previousPosts] : [optimisticPost]);
+          const posts = queryClient.getQueryData(queryKey);
+          previousPosts[JSON.stringify(queryKey)] = posts;
+          queryClient.setQueryData(queryKey, (old: any[] = []) => [optimisticPost, ...old]);
         }
       });
 
-      return { optimisticPost };
+      return { previousPosts, optimisticPost };
     },
-    onSuccess: (data) => {
+    onError: (err, newContent, context) => {
+      // Revert all optimistic updates
+      if (context?.previousPosts) {
+        Object.entries(context.previousPosts).forEach(([queryKeyStr, posts]) => {
+          const queryKey = JSON.parse(queryKeyStr);
+          queryClient.setQueryData(queryKey, posts);
+        });
+      }
+
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message,
+      });
+    },
+    onSuccess: () => {
       // Clear editor state
       setContent("");
       setEditorState("");
@@ -104,7 +128,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         root.append($createParagraphNode());
       });
 
-      // Invalidate to get fresh data
+      // Invalidate queries to fetch fresh data
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (groupId) {
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
@@ -120,33 +144,26 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         description: "Post created successfully",
       });
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
-    },
   });
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!content.trim()) return;
 
-    // Split content by double line breaks (indicating separate ideas)
+    // Split content by double line breaks
     const posts = content
       .split(/\n\s*\n/)
       .map(post => post.trim())
       .filter(post => post.length > 0);
 
-    // If we have multiple non-empty posts, show the dialog
+    // If multiple non-empty posts, show dialog
     if (posts.length > 1) {
       setPendingPosts(posts);
       setShowSplitDialog(true);
       return;
     }
 
-    // Otherwise, create a single post
+    // Otherwise, create single post
     createPost.mutate(content);
   };
 

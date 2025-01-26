@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Group, User, Post, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import PostFilter from "@/components/ui/post-filter";
+import PostFeed from "@/components/post-feed";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -32,21 +33,11 @@ export default function GroupPage() {
   const [, params] = useRoute("/groups/:id");
 
   const { data: group, isLoading: groupLoading } = useQuery<Group & {
+    creator: User;
     isMember: boolean;
     memberCount: number;
   }>({
     queryKey: [`/api/groups/${params?.id}`],
-    enabled: !!params?.id,
-  });
-
-  const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
-    user: User;
-    mentions: (PostMention & { mentionedUser: User })[];
-    group: Group;
-    likeCount: number;
-    liked: boolean;
-  })[]>({
-    queryKey: [`/api/groups/${params?.id}/posts`],
     enabled: !!params?.id,
   });
 
@@ -111,20 +102,7 @@ export default function GroupPage() {
     },
   });
 
-  const filteredPosts = (posts || [])
-    .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-    .filter(post => {
-      if (showStatusOnly && !selectedStatuses.includes(post.status as Status)) {
-        return false;
-      }
-      if (searchQuery.trim()) {
-        return post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          post.mentions.some(mention => mention.mentionedUser.username.toLowerCase().includes(searchQuery));
-      }
-      return true;
-    });
-
-  if (groupLoading || postsLoading || membersLoading) {
+  if (groupLoading || membersLoading) {
     return (
       <div className="flex justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin text-border" />
@@ -252,6 +230,7 @@ export default function GroupPage() {
               onFilterChange={setShowStatusOnly}
               selectedStatuses={selectedStatuses}
               onStatusesChange={setSelectedStatuses}
+              statusCounts={{}}
             />
           </div>
         </div>
@@ -264,16 +243,7 @@ export default function GroupPage() {
           }}
         />
 
-        <div className="space-y-6">
-          {filteredPosts?.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-          {!filteredPosts?.length && (
-            <p className="text-muted-foreground text-center py-8">
-              {searchQuery ? "No posts found matching your search." : "No posts yet"}
-            </p>
-          )}
-        </div>
+        <PostFeed groupId={group.id} />
       </div>
     </div>
   );
