@@ -3,37 +3,37 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Check, Clock, Loader2, MinusCircle } from "lucide-react";
 
-type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
+export type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 
 const statusConfig = {
   none: {
     icon: MinusCircle,
     color: 'text-muted-foreground',
-    bg: 'bg-muted',
+    bg: 'bg-muted/50',
     next: 'not acknowledged' as Status,
   },
   'not acknowledged': {
     icon: Clock,
-    color: 'text-gray-700',
-    bg: 'bg-gray-200',
+    color: 'text-gray-700 dark:text-gray-300',
+    bg: 'bg-gray-200 dark:bg-gray-800',
     next: 'acknowledged' as Status,
   },
   acknowledged: {
     icon: Check,
-    color: 'text-yellow-600',
-    bg: 'bg-yellow-100',
+    color: 'text-yellow-600 dark:text-yellow-400',
+    bg: 'bg-yellow-100 dark:bg-yellow-900/50',
     next: 'in progress' as Status,
   },
   'in progress': {
     icon: Loader2,
-    color: 'text-blue-500',
-    bg: 'bg-blue-100',
+    color: 'text-blue-600 dark:text-blue-400',
+    bg: 'bg-blue-100 dark:bg-blue-900/50',
     next: 'done' as Status,
   },
   done: {
     icon: Check,
-    color: 'text-green-500',
-    bg: 'bg-green-100',
+    color: 'text-green-600 dark:text-green-400',
+    bg: 'bg-green-100 dark:bg-green-900/50',
     next: 'none' as Status,
   },
 };
@@ -71,7 +71,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           const queryKey = query.queryKey[0];
           return typeof queryKey === 'string' && (
             queryKey === "/api/posts" || 
-            queryKey.startsWith("/api/posts/user/")
+            queryKey.startsWith("/api/posts/user/") ||
+            queryKey.startsWith("/api/groups/")
           );
         }
       });
@@ -83,7 +84,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           const queryKey = query.queryKey[0];
           return typeof queryKey === 'string' && (
             queryKey === "/api/posts" || 
-            queryKey.startsWith("/api/posts/user/")
+            queryKey.startsWith("/api/posts/user/") ||
+            queryKey.startsWith("/api/groups/")
           );
         }
       }).forEach(([queryKey, data]) => {
@@ -106,7 +108,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           const queryKey = query.queryKey[0];
           return typeof queryKey === 'string' && (
             queryKey === "/api/posts" || 
-            queryKey.startsWith("/api/posts/user/")
+            queryKey.startsWith("/api/posts/user/") ||
+            queryKey.startsWith("/api/groups/")
           );
         }
       }).forEach(([queryKey]) => {
@@ -140,7 +143,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           const queryKey = query.queryKey[0];
           return typeof queryKey === 'string' && (
             queryKey === "/api/posts" || 
-            queryKey.startsWith("/api/posts/user/")
+            queryKey.startsWith("/api/posts/user/") ||
+            queryKey.startsWith("/api/groups/")
           );
         }
       });
@@ -153,8 +157,9 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       size="sm"
       className={`${config.bg} hover:${config.bg} ${config.color} gap-1.5`}
       onClick={() => updateStatus.mutate(config.next)}
+      disabled={updateStatus.isPending}
     >
-      <Icon className={`h-4 w-4 ${updateStatus.isPending ? "animate-spin" : ""}`} />
+      <Icon className={`h-4 w-4 ${status === 'in progress' || updateStatus.isPending ? "animate-spin" : ""}`} />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );

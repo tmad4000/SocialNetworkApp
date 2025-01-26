@@ -4,23 +4,25 @@ import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
-import type { Post, User, PostMention } from "@db/schema";
+import type { Post, User, PostMention, Group } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
 
 interface PostFeedProps {
   userId?: number;
+  groupId?: number;
 }
 
 type PostWithDetails = Post & {
   user: User;
   mentions: (PostMention & { mentionedUser: User })[];
+  group?: Group;
   likeCount: number;
   liked: boolean;
 };
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
-export default function PostFeed({ userId }: PostFeedProps) {
+export default function PostFeed({ userId, groupId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
@@ -28,22 +30,26 @@ export default function PostFeed({ userId }: PostFeedProps) {
   );
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
-    queryKey: [userId ? `/api/posts/user/${userId}` : "/api/posts"],
+    queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
   });
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
+    // Sort posts by createdAt in descending order (newest first)
+    let sorted = [...posts].sort((a, b) => 
+      new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+    );
+
     // First apply status filter if enabled
-    let filtered = posts;
     if (showStatusOnly && selectedStatuses.length > 0) {
-      filtered = filtered.filter(post => selectedStatuses.includes(post.status as Status));
+      sorted = sorted.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
     // Then apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(post => 
+      sorted = sorted.filter(post => 
         post.content.toLowerCase().includes(query) ||
         post.mentions.some(mention => 
           mention.mentionedUser.username.toLowerCase().includes(query)
@@ -51,7 +57,7 @@ export default function PostFeed({ userId }: PostFeedProps) {
       );
     }
 
-    return filtered;
+    return sorted;
   }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
 
   // Calculate status counts from all posts

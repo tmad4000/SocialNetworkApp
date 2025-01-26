@@ -43,6 +43,8 @@ export default function GroupPage() {
     user: User;
     mentions: (PostMention & { mentionedUser: User })[];
     group: Group;
+    likeCount: number;
+    liked: boolean;
   })[]>({
     queryKey: [`/api/groups/${params?.id}/posts`],
     enabled: !!params?.id,
@@ -94,6 +96,7 @@ export default function GroupPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       toast({
         title: "Success",
         description: group?.isMember ? "Left group successfully" : "Joined group successfully",
@@ -108,15 +111,18 @@ export default function GroupPage() {
     },
   });
 
-  const filteredPosts = posts?.filter(post => {
-    if (showStatusOnly && !selectedStatuses.includes(post.status as Status)) {
-      return false;
-    }
-    if (searchQuery.trim()) {
-      return post.content.toLowerCase().includes(searchQuery.toLowerCase());
-    }
-    return true;
-  });
+  const filteredPosts = (posts || [])
+    .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
+    .filter(post => {
+      if (showStatusOnly && !selectedStatuses.includes(post.status as Status)) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        return post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          post.mentions.some(mention => mention.mentionedUser.username.toLowerCase().includes(searchQuery));
+      }
+      return true;
+    });
 
   if (groupLoading || postsLoading || membersLoading) {
     return (
@@ -254,6 +260,7 @@ export default function GroupPage() {
           groupId={group.id}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}/posts`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
           }}
         />
 

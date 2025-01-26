@@ -2,11 +2,12 @@ import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import { Loader2 } from "lucide-react";
-import type { Post, User, PostMention } from "@db/schema";
+import type { Post, User, PostMention, Group } from "@db/schema";
 
 type PostWithDetails = Post & {
   user: User;
   mentions: (PostMention & { mentionedUser: User })[];
+  group?: Group;
   likeCount: number;
   liked: boolean;
 };
