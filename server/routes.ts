@@ -488,22 +488,33 @@ export function registerRoutes(app: Express): Server {
 
       // Only attempt to generate embedding if bio is not empty
       if (bio.trim()) {
-        const { FlagEmbedding } = await import("fastembed");
-        const embedder = await FlagEmbedding.init();
-        const embeddings = await embedder.embed([bio]);
-        const bioEmbedding = Array.from(embeddings[0]);
+        try {
+          const { FlagEmbedding } = await import("fastembed");
+          const embedder = await FlagEmbedding.init();
+          const embeddings = await embedder.embed([bio]);
 
-        // Upsert the embedding
-        await db
-          .insert(userEmbeddings)
-          .values({
-            userId: req.user.id,
-            bioEmbedding,
-          })
-          .onConflictDoUpdate({
-            target: [userEmbeddings.userId],
-            set: { bioEmbedding },
-          });
+          // Ensure embeddings[0] exists and is an array-like object before conversion
+          if (embeddings && embeddings[0]) {
+            const bioEmbedding = Array.from(embeddings[0]);
+
+            // Upsert the embedding
+            await db
+              .insert(userEmbeddings)
+              .values({
+                userId: req.user.id,
+                bioEmbedding,
+              })
+              .onConflictDoUpdate({
+                target: [userEmbeddings.userId],
+                set: { bioEmbedding },
+              });
+          } else {
+            console.error('Failed to generate bio embedding: Empty embeddings result');
+          }
+        } catch (embeddingError) {
+          // Log embedding error but don't fail the request
+          console.error('Error generating bio embedding:', embeddingError);
+        }
       }
 
       res.json(updatedUser);
@@ -1018,8 +1029,7 @@ export function registerRoutes(app: Express): Server {
             columns: {
               id: true,
               username: true,
-              avatar: true,
-            }
+              avatar: true,            }
           },
           mentions: {
             with: {
