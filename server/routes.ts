@@ -402,6 +402,7 @@ export function registerRoutes(app: Express): Server {
   });
 
 
+
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -764,6 +765,10 @@ export function registerRoutes(app: Express): Server {
             }
           },
           members: {
+            columns: {
+              role: true,
+              joinedAt: true,
+            },
             with: {
               user: {
                 columns: {
@@ -772,7 +777,8 @@ export function registerRoutes(app: Express): Server {
                   avatar: true,
                 }
               }
-            }
+            },
+            orderBy: desc(groupMembers.joinedAt),
           }
         }
       });
@@ -781,7 +787,22 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).send("Group not found");
       }
 
-      res.json(group);
+      // Check if current user is a member
+      const isMember = req.user ? group.members.some(member => member.user.id === req.user?.id) : false;
+
+      // Transform the response to include role information
+      const formattedGroup = {
+        ...group,
+        isMember,
+        memberCount: group.members.length,
+        members: group.members.map(member => ({
+          ...member.user,
+          role: member.role,
+          joinedAt: member.joinedAt,
+        }))
+      };
+
+      res.json(formattedGroup);
     } catch (error) {
       console.error('Error fetching group:', error);
       res.status(500).send("Error fetching group");
@@ -1002,8 +1023,7 @@ export function registerRoutes(app: Express): Server {
   // Get group posts
   app.get("/api/groups/:id/posts", async (req, res) => {
     const groupId = parseInt(req.params.id);
-    if (isNaN(groupId)) {
-      return res.status(400).send("Invalid group ID");
+    if (isNaN(groupId)) {      return res.status(400).send("Invalid group ID");
     }
 
     try {
