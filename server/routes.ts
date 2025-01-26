@@ -402,7 +402,6 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -679,38 +678,44 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      // If targetUserId is provided, verify it exists
-      if (targetUserId) {
-        const targetUser = await db.query.users.findFirst({
-          where: eq(users.id, targetUserId),
-        });
-
-        if (!targetUser) {
-          return res.status(400).send("Target user not found");
-        }
-      }
-
-      // Extract mentions from content using regex
-      const mentionMatches = content.match(/@(\w+)/g) || [];
-      const mentionedUsernames = mentionMatches.map(match => match.substring(1));
-
-      // Find mentioned users
-      const mentionedUsers = await db.query.users.findMany({
-        where: inArray(users.username, mentionedUsernames),
-      });
-
-      // Create post with status
+      // First create the post
       const [newPost] = await db
         .insert(posts)
         .values({
           content,
           userId: req.user.id,
-          status: 'none', // Default status
+          status: 'none',
         })
         .returning();
 
+      // Generate and store embedding for the new post
+      try {
+        const embedding = await generateEmbedding(content);
+        await db
+          .insert(postEmbeddings)
+          .values({
+            postId: newPost.id,
+            embedding,
+          })
+          .onConflictDoUpdate({
+            target: [postEmbeddings.postId],
+            set: { embedding }
+          });
+        console.log(`Generated embedding for new post ${newPost.id}`);
+      } catch (error) {
+        console.error('Error generating embedding for new post:', error);
+      }
+
       // Create mentions
-      if (mentionedUsers.length > 0 || targetUserId) {
+      if (targetUserId || content.match(/@(\w+)/g)) {
+        const mentionMatches = content.match(/@(\w+)/g) || [];
+        const mentionedUsernames = mentionMatches.map(match => match.substring(1));
+
+        // Find mentioned users
+        const mentionedUsers = await db.query.users.findMany({
+          where: inArray(users.username, mentionedUsernames),
+        });
+
         const mentionsToCreate = [
           ...mentionedUsers.map(user => ({
             postId: newPost.id,
@@ -1041,23 +1046,26 @@ export function registerRoutes(app: Express): Server {
                 id: true,
                 username: true,
                 avatar: true,
+                id: true,
+                username: true,
+                avatar: true,
               }
             }
           }
         },
         likes: true,
       },
-        });
+    });
 
     // Transform response to include like count and liked status
     const response = {
-        ...postWithMentions,
-        likeCount: postWithMentions?.likes.length || 0,
-        liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
-        likes: undefined, // Remove the likes array from the response
-      };
+      ...postWithMentions,
+      likeCount: postWithMentions?.likes.length || 0,
+      liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
+      likes: undefined, // Remove the likes array from the response
+    };
 
-      res.json(response);
+    res.json(response);
   });
 
   app.delete("/api/posts/:id", async (req, res) => {
@@ -1157,29 +1165,8 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      if (!sourcePost || !sourcePost.embedding?.embedding) {
-        // If source post has no embedding, try to generate one
-        if (!sourcePost) {
-          return res.status(404).send("Post not found");
-        }
-
-        try {
-          const embedding = await generateEmbedding(sourcePost.content);
-          await db
-            .insert(postEmbeddings)
-            .values({
-              postId,
-              embedding,
-            })
-            .onConflictDoUpdate({
-              target: [postEmbeddings.postId],
-              set: { embedding },
-            });
-          sourcePost.embedding = { embedding };
-        } catch (error) {
-          console.error("Error generating post embedding:", error);
-          throw new Error("Failed to generate embedding for post");
-        }
+      if (!sourcePost) {
+        return res.status(404).send("Post not found");
       }
 
       // Get all other posts with their embeddings
@@ -1209,88 +1196,60 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      // Calculate similarity scores for all posts and include all posts in response
-      const postsWithScores = allPosts
-        .map(post => {
-          let similarity = 0;
+      // Calculate similarity scores for all posts
+      const postsWithScores = allPosts.map(post => {
+        let similarity = 0;
 
-          // Only calculate similarity if both posts have embeddings
-          if (post.embedding?.embedding && sourcePost.embedding?.embedding) {
-            try {
-              // Parse the embeddings from JSON if they're stored as strings
-              const sourceEmbedding = typeof sourcePost.embedding.embedding === 'string'
-                ? Object.values(JSON.parse(sourcePost.embedding.embedding)[0])
-                : sourcePost.embedding.embedding;
+        if (sourcePost.embedding?.embedding && post.embedding?.embedding) {
+          try {
+            // Parse embeddings from JSON strings
+            let sourceEmbedding = sourcePost.embedding.embedding;
+            let targetEmbedding = post.embedding.embedding;
 
-              const targetEmbedding = typeof post.embedding.embedding === 'string'
-                ? Object.values(JSON.parse(post.embedding.embedding)[0])
-                : post.embedding.embedding;
-
-              if (sourceEmbedding.length === targetEmbedding.length) {
-                similarity = calculateCosineSimilarity(
-                  sourceEmbedding,
-                  targetEmbedding
-                );
-              } else {
-                console.error('Embedding length mismatch:', {
-                  sourceLength: sourceEmbedding.length,
-                  targetLength: targetEmbedding.length
-                });
-              }
-            } catch (error) {
-              console.error('Error calculating similarity:', error);
-              console.error('Source embedding type:', typeof sourcePost.embedding.embedding);
-              console.error('Target embedding type:', typeof post.embedding.embedding);
+            // Handle string embeddings
+            if (typeof sourceEmbedding === 'string') {
+              sourceEmbedding = Object.values(JSON.parse(sourceEmbedding)[0]);
             }
+            if (typeof targetEmbedding === 'string') {
+              targetEmbedding = Object.values(JSON.parse(targetEmbedding)[0]);
+            }
+
+            if (Array.isArray(sourceEmbedding) && Array.isArray(targetEmbedding) &&
+                sourceEmbedding.length === targetEmbedding.length) {
+              similarity = calculateCosineSimilarity(
+                sourceEmbedding,
+                targetEmbedding
+              );
+              console.log(`Calculated similarity between posts ${sourcePost.id} and ${post.id}: ${similarity}`);
+            } else {
+              console.error('Invalid embedding format:', {
+                sourceLength: Array.isArray(sourceEmbedding) ? sourceEmbedding.length : 'not array',
+                targetLength: Array.isArray(targetEmbedding) ? targetEmbedding.length : 'not array'
+              });
+            }
+          } catch (error) {
+            console.error('Error calculating similarity:', error);
           }
+        }
 
-          return {
-            ...post,
-            similarity,
-            likeCount: post.likes.length,
-            liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
-            likes: undefined, // Remove the likes array from the response
-            embedding: undefined, // Remove the embedding from the response
-          };
-        })
-        // Sort by similarity score in descending order
-        .sort((a, b) => b.similarity - a.similarity);
+        return {
+          ...post,
+          similarity,
+          likeCount: post.likes.length,
+          liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
+          likes: undefined,
+          embedding: undefined,
+        };
+      });
 
-      res.json(postsWithScores);
+      // Sort by similarity score in descending order
+      const sortedPosts = postsWithScores.sort((a, b) => b.similarity - a.similarity);
+
+      res.json(sortedPosts);
     } catch (error) {
       console.error("Error finding related posts:", error);
       res.status(500).send("Error finding related posts");
     }
-  });
-
-  app.use(async (req, res, next) => {
-    const oldJson = res.json;
-    res.json = async function(this: any, ...args: any[]) {
-      const body = args[0];
-
-      // Check if this is a new post being created
-      if (req.method === 'POST' && req.path === '/api/posts' && body?.id) {
-        try {
-          const embedding = await generateEmbedding(body.content);
-          await db
-            .insert(postEmbeddings)
-            .values({
-              postId: body.id,
-              embedding,
-            })
-            .onConflictDoUpdate({
-              target: [postEmbeddings.postId],
-              set: { embedding }
-            });
-          console.log(`Generated embedding for new post ${body.id}`);
-        } catch (error) {
-          console.error('Error generating embedding for new post:', error);
-        }
-      }
-
-      return oldJson.apply(this, args);
-    };
-    next();
   });
 
   app.get("/api/friends", async (req, res) => {
