@@ -23,6 +23,8 @@ export default function FriendRequestsMenu() {
         .filter(f => f.friendId === currentUser?.id && f.status === 'pending')
         .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
     },
+    refetchInterval: 5000, // Poll every 5 seconds
+    staleTime: 0, // Consider data stale immediately to enable refetching
   });
 
   const acceptRequest = useMutation({

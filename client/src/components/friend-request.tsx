@@ -37,8 +37,9 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate both friends list and specific user queries
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
       toast({
         title: "Success",
         description: "Friend request sent",
@@ -70,6 +71,7 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
       toast({
         title: "Success",
         description: "Friend request accepted",
@@ -101,6 +103,7 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
       toast({
         title: "Success",
         description: "Friend request dismissed",
@@ -132,6 +135,7 @@ export default function FriendRequest({ userId, status, requestId }: FriendReque
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${userId}`] });
       toast({
         title: "Success",
         description: "Friend removed",
