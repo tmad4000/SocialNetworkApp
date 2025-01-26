@@ -5,12 +5,12 @@ let model: any = null;
 export const preprocessText = (text: string): string => {
   return text
     .toLowerCase()
-    // Replace newlines with spaces
-    .replace(/\n+/g, ' ')
-    // Remove special characters except letters and numbers and spaces
-    .replace(/[^a-z0-9\s]/g, ' ')
-    // Remove extra spaces
+    // Remove hashtags and special characters but preserve words
+    .replace(/#(\w+)/g, '$1')
+    // Replace multiple spaces with single space
     .replace(/\s+/g, ' ')
+    // Remove remaining special characters
+    .replace(/[^\w\s]/g, '')
     .trim();
 };
 
@@ -27,7 +27,8 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     }
 
     const preprocessedText = preprocessText(text);
-    console.log("Generating embedding for text:", preprocessedText);
+    console.log("Original text:", text);
+    console.log("Preprocessed text:", preprocessedText);
 
     // Get embeddings iterator
     const embeddingsIterator = await model.embed([preprocessedText]);
@@ -66,11 +67,6 @@ export function calculateCosineSimilarity(embedding1: number[], embedding2: numb
     return 0;
   }
 
-  console.log("Calculating similarity between embeddings:", {
-    embedding1First5: embedding1.slice(0, 5),
-    embedding2First5: embedding2.slice(0, 5)
-  });
-
   // Calculate dot product
   const dotProduct = embedding1.reduce((sum, a, i) => sum + a * embedding2[i], 0);
 
@@ -80,7 +76,12 @@ export function calculateCosineSimilarity(embedding1: number[], embedding2: numb
 
   // Avoid division by zero
   if (magnitude1 === 0 || magnitude2 === 0) {
-    console.error('Zero magnitude encountered:', { magnitude1, magnitude2 });
+    console.error('Zero magnitude encountered:', {
+      magnitude1,
+      magnitude2,
+      embedding1First5: embedding1.slice(0, 5),
+      embedding2First5: embedding2.slice(0, 5)
+    });
     return 0;
   }
 

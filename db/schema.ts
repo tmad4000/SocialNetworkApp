@@ -32,7 +32,7 @@ export const posts = pgTable("posts", {
 // New table for post embeddings
 export const postEmbeddings = pgTable("post_embeddings", {
   id: serial("id").primaryKey(),
-  postId: integer("post_id").references(() => posts.id).notNull(),
+  postId: integer("post_id").references(() => posts.id).notNull().unique(), // Add unique constraint
   embedding: jsonb("embedding").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

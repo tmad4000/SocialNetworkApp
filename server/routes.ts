@@ -1132,17 +1132,16 @@ export function registerRoutes(app: Express): Server {
   const POST_SIMILARITY_THRESHOLD = 0; // Show all posts with their scores for debugging
 
   app.get("/api/posts/:id/related", async (req, res) => {
-    try {
-      const postId = parseInt(req.params.id);
-      if (isNaN(postId)) {
-        return res.status(400).send("Invalid post ID");
-      }
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
 
+    try {
       // Get the source post with its embedding
       const sourcePost = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
         with: {
-          embedding: true,
           user: {
             columns: {
               id: true,
@@ -1150,6 +1149,8 @@ export function registerRoutes(app: Express): Server {
               avatar: true,
             }
           },
+          embedding: true,
+          likes: true,
           mentions: {
             with: {
               mentionedUser: {
@@ -1160,8 +1161,7 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          },
-          likes: true,
+          }
         }
       });
 
@@ -1169,11 +1169,15 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).send("Post not found");
       }
 
+      if (!sourcePost.embedding) {
+        console.log(`No embedding found for source post ${postId}`);
+        return res.json([]);
+      }
+
       // Get all other posts with their embeddings
       const allPosts = await db.query.posts.findMany({
-        where: not(eq(posts.id, postId)), // Exclude the source post
+        where: not(eq(posts.id, postId)),
         with: {
-          embedding: true,
           user: {
             columns: {
               id: true,
@@ -1181,6 +1185,8 @@ export function registerRoutes(app: Express): Server {
               avatar: true,
             }
           },
+          embedding: true,
+          likes: true,
           mentions: {
             with: {
               mentionedUser: {
@@ -1191,64 +1197,44 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          },
-          likes: true,
-        }
-      });
-
-      // Calculate similarity scores for all posts
-      const postsWithScores = allPosts.map(post => {
-        let similarity = 0;
-
-        if (sourcePost.embedding?.embedding && post.embedding?.embedding) {
-          try {
-            // Parse embeddings from JSON strings
-            let sourceEmbedding = sourcePost.embedding.embedding;
-            let targetEmbedding = post.embedding.embedding;
-
-            // Handle string embeddings
-            if (typeof sourceEmbedding === 'string') {
-              sourceEmbedding = Object.values(JSON.parse(sourceEmbedding)[0]);
-            }
-            if (typeof targetEmbedding === 'string') {
-              targetEmbedding = Object.values(JSON.parse(targetEmbedding)[0]);
-            }
-
-            if (Array.isArray(sourceEmbedding) && Array.isArray(targetEmbedding) &&
-                sourceEmbedding.length === targetEmbedding.length) {
-              similarity = calculateCosineSimilarity(
-                sourceEmbedding,
-                targetEmbedding
-              );
-              console.log(`Calculated similarity between posts ${sourcePost.id} and ${post.id}: ${similarity}`);
-            } else {
-              console.error('Invalid embedding format:', {
-                sourceLength: Array.isArray(sourceEmbedding) ? sourceEmbedding.length : 'not array',
-                targetLength: Array.isArray(targetEmbedding) ? targetEmbedding.length : 'not array'
-              });
-            }
-          } catch (error) {
-            console.error('Error calculating similarity:', error);
           }
         }
-
-        return {
-          ...post,
-          similarity,
-          likeCount: post.likes.length,
-          liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
-          likes: undefined,
-          embedding: undefined,
-        };
       });
 
-      // Sort by similarity score in descending order
-      const sortedPosts = postsWithScores.sort((a, b) => b.similarity - a.similarity);
+      // Calculate similarities and sort
+      const postsWithSimilarity = allPosts
+        .map(post => {
+          if (!post.embedding) {
+            console.log(`No embedding found for target post ${post.id}`);
+            return { ...post, similarity: 0 };
+          }
 
-      res.json(sortedPosts);
+          const similarity = calculateCosineSimilarity(
+            sourcePost.embedding.embedding as number[],
+            post.embedding.embedding as number[]
+          );
+
+          console.log(`Similarity between posts ${sourcePost.id} and ${post.id}:`, {
+            sourceContent: sourcePost.content,
+            targetContent: post.content,
+            similarity
+          });
+
+          return {
+            ...post,
+            similarity,
+            likeCount: post.likes.length,
+            liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
+            likes: undefined,
+          };
+        })
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5); // Get top 5 most similar posts
+
+      res.json(postsWithSimilarity);
     } catch (error) {
-      console.error("Error finding related posts:", error);
-      res.status(500).send("Error finding related posts");
+      console.error('Error fetching related posts:', error);
+      res.status(500).json({ message: "Error fetching related posts" });
     }
   });
 
