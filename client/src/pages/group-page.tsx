@@ -8,25 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Users, Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import PostCard from "@/components/post-card";
-import CreatePost from "@/components/create-post";
-import { useToast } from "@/hooks/use-toast";
-import type { Group, User, Post, PostMention } from "@db/schema";
 import { Link } from "wouter";
-import PostFilter from "@/components/ui/post-filter";
-import PostFeed from "@/components/post-feed";
+import { useToast } from "@/hooks/use-toast";
+import type { Group, User } from "@db/schema";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
-const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
 export default function GroupPage() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showStatusOnly, setShowStatusOnly] = useState(false);
-  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
-    STATUSES.filter(status => status !== 'none')
-  );
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -44,6 +35,38 @@ export default function GroupPage() {
   const { data: members, isLoading: membersLoading } = useQuery<User[]>({
     queryKey: [`/api/groups/${params?.id}/members`],
     enabled: !!params?.id,
+  });
+
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/user"],
+  });
+
+  const toggleMembership = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/groups/${params?.id}/${group?.isMember ? 'leave' : 'join'}`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}/members`] });
+      toast({
+        title: "Success",
+        description: group?.isMember ? "Left group successfully" : "Joined group successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    },
   });
 
   const updateDescription = useMutation({
@@ -64,33 +87,6 @@ export default function GroupPage() {
       toast({
         title: "Success",
         description: "Group description updated successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
-    },
-  });
-
-  const toggleMembership = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/groups/${params?.id}/${group?.isMember ? 'leave' : 'join'}`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
-      toast({
-        title: "Success",
-        description: group?.isMember ? "Left group successfully" : "Joined group successfully",
       });
     },
     onError: (error) => {
@@ -133,12 +129,26 @@ export default function GroupPage() {
 
           <div className="flex-1 space-y-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">{group.name}</h1>
+              <div>
+                <h1 className="text-2xl font-bold">{group.name}</h1>
+                <div className="text-sm text-muted-foreground">
+                  Created by{" "}
+                  <Link href={`/profile/${group.creator.id}`} className="hover:underline">
+                    {group.creator.username}
+                  </Link>
+                </div>
+              </div>
               <Button
                 onClick={() => toggleMembership.mutate()}
                 variant={group.isMember ? "outline" : "default"}
               >
-                {group.isMember ? "Leave Group" : "Join Group"}
+                {toggleMembership.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : group.isMember ? (
+                  "Leave Group"
+                ) : (
+                  "Join Group"
+                )}
               </Button>
             </div>
 
@@ -168,7 +178,7 @@ export default function GroupPage() {
                 <p className="text-muted-foreground flex-1">
                   {group.description || "No description yet"}
                 </p>
-                {group.isMember && (
+                {currentUser?.id === group.creator.id && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -210,41 +220,6 @@ export default function GroupPage() {
           )}
         </CardContent>
       </Card>
-
-      <div className="space-y-6">
-        <Separator className="my-8" />
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="flex items-center gap-4">
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search posts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <PostFilter
-              showStatusOnly={showStatusOnly}
-              onFilterChange={setShowStatusOnly}
-              selectedStatuses={selectedStatuses}
-              onStatusesChange={setSelectedStatuses}
-              statusCounts={{}}
-            />
-          </div>
-        </div>
-
-        <CreatePost
-          groupId={group.id}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}/posts`] });
-            queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
-          }}
-        />
-
-        <PostFeed groupId={group.id} />
-      </div>
     </div>
   );
 }
