@@ -25,10 +25,9 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
-    staleTime: 60000, // Cache for 1 minute
+    staleTime: 60000,
   });
 
-  // Get group data if groupId is provided
   const { data: group } = useQuery({
     queryKey: [`/api/groups/${groupId}`],
     enabled: !!groupId,
@@ -49,53 +48,70 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
       return res.json();
     },
-    onSuccess: (data) => {
-      // Clear content state
-      setContent("");
-      setEditorState("");
+    onMutate: async (newContent) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
+      if (groupId) {
+        await queryClient.cancelQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
+      }
+      if (targetUserId) {
+        await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
+      }
 
-      // Reset Lexical editor state
-      editor?.update(() => {
-        const root = $getRoot();
-        root.clear();
-        const paragraph = $createParagraphNode();
-        root.append(paragraph);
-      });
-
-      // Add group data to the optimistic update if this is a group post
+      // Create optimistic post
       const optimisticPost = {
-        ...data,
+        id: -1, // Temporary ID
+        content: newContent,
+        createdAt: new Date().toISOString(),
+        status: 'none',
+        userId: -1,
+        mentions: [],
+        user: group?.creator || {}, // Will be replaced with actual user data
+        likeCount: 0,
+        liked: false,
         group: groupId && group ? {
           id: group.id,
           name: group.name,
-        } : undefined
+          description: group.description,
+          createdAt: group.createdAt,
+          createdBy: group.createdBy,
+        } : undefined,
       };
 
-      // Update query cache with the new post
-      queryClient.setQueryData(["/api/posts"], (oldData: any[] | undefined) => 
-        oldData ? [optimisticPost, ...oldData] : [optimisticPost]
-      );
+      // Update all relevant queries with optimistic data
+      const queries = [
+        ["/api/posts"],
+        groupId ? [`/api/groups/${groupId}/posts`] : null,
+        targetUserId ? [`/api/posts/user/${targetUserId}`] : null,
+      ].filter(Boolean);
 
-      if (groupId) {
-        queryClient.setQueryData([`/api/groups/${groupId}/posts`], (oldData: any[] | undefined) =>
-          oldData ? [optimisticPost, ...oldData] : [optimisticPost]
-        );
-      }
+      queries.forEach(queryKey => {
+        if (queryKey) {
+          const previousPosts = queryClient.getQueryData(queryKey) as any[];
+          queryClient.setQueryData(queryKey, previousPosts ? [optimisticPost, ...previousPosts] : [optimisticPost]);
+        }
+      });
 
-      if (targetUserId) {
-        queryClient.setQueryData([`/api/posts/user/${targetUserId}`], (oldData: any[] | undefined) =>
-          oldData ? [optimisticPost, ...oldData] : [optimisticPost]
-        );
-      }
+      return { optimisticPost };
+    },
+    onSuccess: (data) => {
+      // Clear editor state
+      setContent("");
+      setEditorState("");
+      editor?.update(() => {
+        const root = $getRoot();
+        root.clear();
+        root.append($createParagraphNode());
+      });
 
-      // Invalidate all relevant queries to ensure data consistency
+      // Invalidate to get fresh data
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      if (targetUserId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
-      }
       if (groupId) {
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
+      }
+      if (targetUserId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
       }
 
       onSuccess?.();
@@ -112,23 +128,6 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       });
     },
   });
-
-  const createMultiplePosts = async () => {
-    try {
-      // Create posts sequentially to maintain order
-      for (const post of pendingPosts) {
-        await createPost.mutateAsync(post);
-      }
-      setPendingPosts([]);
-      setShowSplitDialog(false);
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
-    }
-  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -193,7 +192,13 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
             setPendingPosts([]);
           }
         }}
-        onConfirm={createMultiplePosts}
+        onConfirm={() => {
+          pendingPosts.forEach(async (post) => {
+            await createPost.mutateAsync(post);
+          });
+          setPendingPosts([]);
+          setShowSplitDialog(false);
+        }}
         postCount={pendingPosts.length}
       />
     </>
