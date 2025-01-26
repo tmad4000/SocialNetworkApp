@@ -43,8 +43,11 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       return res.json();
     },
     onSuccess: () => {
+      // Clear content state
       setContent("");
       setEditorState("");
+
+      // Reset Lexical editor state
       if (editor) {
         editor.update(() => {
           const root = $getRoot();
@@ -53,6 +56,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
           root.append(paragraph);
         });
       }
+
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
