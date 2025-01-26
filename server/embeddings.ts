@@ -27,21 +27,22 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     }
 
     const preprocessedText = preprocessText(text);
-    console.log("Preprocessed text:", preprocessedText);
+    console.log("Generating embedding for text:", preprocessedText);
 
     // Get embeddings iterator
     const embeddingsIterator = await model.embed([preprocessedText]);
 
     // Get the first embeddings result from the iterator
     const result = await embeddingsIterator.next();
-    console.log("Generated embeddings result:", result);
 
     if (!result.value || !result.value.length) {
       throw new Error("Failed to generate embedding: Invalid embedding result");
     }
 
-    // Convert Float32Array to regular array
-    return Array.from(result.value);
+    // Convert Float32Array to regular array and log first few values
+    const embedding = Array.from(result.value[0]);
+    console.log("Generated embedding first 5 values:", embedding.slice(0, 5));
+    return embedding;
   } catch (error) {
     console.error("Error in generateEmbedding:", error);
     throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -49,6 +50,27 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 export function calculateCosineSimilarity(embedding1: number[], embedding2: number[]): number {
+  if (!Array.isArray(embedding1) || !Array.isArray(embedding2)) {
+    console.error('Invalid embedding format:', {
+      embedding1Type: typeof embedding1,
+      embedding2Type: typeof embedding2
+    });
+    return 0;
+  }
+
+  if (embedding1.length !== embedding2.length) {
+    console.error('Embedding length mismatch:', {
+      embedding1Length: embedding1.length,
+      embedding2Length: embedding2.length
+    });
+    return 0;
+  }
+
+  console.log("Calculating similarity between embeddings:", {
+    embedding1First5: embedding1.slice(0, 5),
+    embedding2First5: embedding2.slice(0, 5)
+  });
+
   // Calculate dot product
   const dotProduct = embedding1.reduce((sum, a, i) => sum + a * embedding2[i], 0);
 
@@ -56,6 +78,15 @@ export function calculateCosineSimilarity(embedding1: number[], embedding2: numb
   const magnitude1 = Math.sqrt(embedding1.reduce((sum, a) => sum + a * a, 0));
   const magnitude2 = Math.sqrt(embedding2.reduce((sum, a) => sum + a * a, 0));
 
+  // Avoid division by zero
+  if (magnitude1 === 0 || magnitude2 === 0) {
+    console.error('Zero magnitude encountered:', { magnitude1, magnitude2 });
+    return 0;
+  }
+
   // Calculate cosine similarity
-  return dotProduct / (magnitude1 * magnitude2);
+  const similarity = dotProduct / (magnitude1 * magnitude2);
+  console.log("Calculated similarity:", similarity);
+
+  return similarity;
 }
