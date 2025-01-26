@@ -709,6 +709,7 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/groups", async (req, res) => {
     try {
       const allGroups = await db.query.groups.findMany({
+        orderBy: desc(groups.createdAt),
         with: {
           creator: {
             columns: {
