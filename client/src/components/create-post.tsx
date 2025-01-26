@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import type { User } from "@db/schema";
 import LexicalEditor from "./lexical-editor";
+import { $getRoot, $createParagraphNode } from 'lexical';
 
 interface CreatePostProps {
   onSuccess?: () => void;
@@ -16,6 +17,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
   const [editorState, setEditorState] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [editor, setEditor] = useState<any>(null);
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -40,6 +42,14 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
     onSuccess: () => {
       setContent("");
       setEditorState("");
+      if (editor) {
+        editor.update(() => {
+          const root = $getRoot();
+          root.clear();
+          const paragraph = $createParagraphNode();
+          root.append(paragraph);
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
@@ -77,6 +87,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
             users={users || []}
             placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
             onSubmit={handleSubmit}
+            setEditor={setEditor}
           />
           <div className="flex justify-end">
             <Button

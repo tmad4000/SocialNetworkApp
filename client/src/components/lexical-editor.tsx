@@ -310,6 +310,7 @@ interface LexicalEditorProps {
   placeholder?: string;
   onClear?: () => void;
   onSubmit?: () => void;
+  autoFocus?: boolean;
 }
 
 function InitialValuePlugin({ initialValue, initialState }: { initialValue?: string; initialState?: string }) {
@@ -336,6 +337,16 @@ function InitialValuePlugin({ initialValue, initialState }: { initialValue?: str
       setInitialized(true);
     }
   }, [editor, initialValue, initialState, initialized]);
+
+  return null;
+}
+
+function AutoFocusPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editor.focus();
+  }, [editor]);
 
   return null;
 }
@@ -379,6 +390,7 @@ export default function LexicalEditor({
   placeholder,
   onClear,
   onSubmit,
+  autoFocus,
 }: LexicalEditorProps) {
   const [editor, setEditor] = useState<any>(null);
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
@@ -438,6 +450,7 @@ export default function LexicalEditor({
         <MentionsPlugin users={users} />
         <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
         <ShortcutPlugin onSubmit={onSubmit} />
+        {autoFocus && <AutoFocusPlugin />}
       </div>
     </LexicalComposer>
   );

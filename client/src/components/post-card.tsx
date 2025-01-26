@@ -252,6 +252,7 @@ export default function PostCard({ post }: PostCardProps) {
               users={users || []}
               initialState={createInitialState()}
               onSubmit={handleSaveEdit}
+              autoFocus
             />
             <div className="flex justify-end gap-2">
               <Button
