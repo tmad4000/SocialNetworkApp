@@ -1212,13 +1212,24 @@ export function registerRoutes(app: Express): Server {
       // Calculate similarity scores for all posts and include all posts in response
       const postsWithScores = allPosts
         .map(post => {
-          // Calculate similarity if the post has an embedding
-          const similarity = post.embedding?.embedding
-            ? calculateCosineSimilarity(
-                sourcePost.embedding.embedding,
-                post.embedding.embedding
-              )
-            : 0;
+          let similarity = 0;
+
+          // Only calculate similarity if both posts have embeddings
+          if (post.embedding?.embedding && sourcePost.embedding?.embedding) {
+            // Handle the embeddings which are stored as unknown type
+            const sourceEmbedding = sourcePost.embedding.embedding as number[];
+            const targetEmbedding = post.embedding.embedding as number[];
+
+            if (sourceEmbedding.length > 0 && targetEmbedding.length > 0) {
+              try {
+                similarity = calculateCosineSimilarity(sourceEmbedding, targetEmbedding);
+              } catch (error) {
+                console.error('Error calculating similarity:', error);
+                console.error('Source embedding:', sourceEmbedding.length);
+                console.error('Target embedding:', targetEmbedding.length);
+              }
+            }
+          }
 
           return {
             ...post,
