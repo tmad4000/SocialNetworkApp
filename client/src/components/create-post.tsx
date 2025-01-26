@@ -48,13 +48,20 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       setEditorState("");
 
       // Reset Lexical editor state
-      if (editor) {
-        editor.update(() => {
-          const root = $getRoot();
-          root.clear();
-          const paragraph = $createParagraphNode();
-          root.append(paragraph);
-        });
+      try {
+        if (editor) {
+          editor.update(() => {
+            const root = $getRoot();
+            root.clear();
+            const paragraph = $createParagraphNode();
+            root.append(paragraph);
+          });
+
+          // Force editor to re-render with empty state
+          editor.setEditorState(editor.parseEditorState(""));
+        }
+      } catch (error) {
+        console.error("Error resetting editor:", error);
       }
 
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
@@ -128,6 +135,7 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
               placeholder={targetUserId ? "Write something on their timeline..." : "What's on your mind? Use @ to mention users"}
               onSubmit={handleSubmit}
               setEditor={setEditor}
+              editorState={editorState}
             />
             <div className="flex justify-end">
               <Button
