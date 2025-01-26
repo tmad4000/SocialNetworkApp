@@ -8,7 +8,7 @@ import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Link as LinkIcon, MoreVertical } from "lucide-react";
+import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -26,6 +26,8 @@ import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import LexicalEditor from "./lexical-editor";
 import RelatedPosts from "./related-posts";
+import type { Group } from "@db/schema"; // Added import for Group type
+
 
 interface PostCardProps {
   post: Post & {
@@ -33,6 +35,7 @@ interface PostCardProps {
     mentions: (PostMention & { mentionedUser: User })[];
     likeCount: number;
     liked: boolean;
+    group?: Group; // Add group to the post type
   };
 }
 
@@ -150,7 +153,6 @@ export default function PostCard({ post }: PostCardProps) {
 
   const isOwner = currentUser?.id === post.user.id;
 
-  // Create initial editor state with mentions
   const createInitialState = () => {
     const mentionEditorState = {
       root: {
@@ -207,11 +209,23 @@ export default function PostCard({ post }: PostCardProps) {
           </Avatar>
         </Link>
         <div className="flex-1">
-          <Link href={`/profile/${post.user.id}`}>
-            <span className="font-semibold hover:underline cursor-pointer">
-              {post.user.username}
-            </span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/profile/${post.user.id}`}>
+              <span className="font-semibold hover:underline cursor-pointer">
+                {post.user.username}
+              </span>
+            </Link>
+            {post.group && (
+              <>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <Link href={`/groups/${post.group.id}`}>
+                  <span className="font-semibold text-primary hover:underline cursor-pointer">
+                    {post.group.name}
+                  </span>
+                </Link>
+              </>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
           </p>

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
 import { useToast } from "@/hooks/use-toast";
-import type { Group, User, Post } from "@db/schema";
+import type { Group, User, Post, PostMention } from "@db/schema";
 import { Link } from "wouter";
 import PostFilter from "@/components/ui/post-filter";
 
@@ -26,12 +26,12 @@ export default function GroupPage() {
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
-  
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/groups/:id");
 
-  const { data: group, isLoading: groupLoading } = useQuery<Group & { 
+  const { data: group, isLoading: groupLoading } = useQuery<Group & {
     isMember: boolean;
     memberCount: number;
   }>({
@@ -41,6 +41,8 @@ export default function GroupPage() {
 
   const { data: posts, isLoading: postsLoading } = useQuery<(Post & {
     user: User;
+    mentions: (PostMention & { mentionedUser: User })[];
+    group: Group;
   })[]>({
     queryKey: [`/api/groups/${params?.id}/posts`],
     enabled: !!params?.id,
