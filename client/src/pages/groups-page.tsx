@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ type GroupWithMemberCount = Group & {
 export default function GroupsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
-  
+
   const { data: groups, isLoading } = useQuery<GroupWithMemberCount[]>({
     queryKey: ["/api/groups"],
   });
@@ -48,7 +48,7 @@ export default function GroupsPage() {
           <UsersIcon className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Groups</h1>
         </div>
-        
+
         <CreateGroupDialog />
       </div>
 
@@ -107,6 +107,7 @@ function CreateGroupDialog() {
   const [description, setDescription] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +119,9 @@ function CreateGroupDialog() {
       });
 
       if (!res.ok) throw new Error(await res.text());
+
+      // Invalidate and refetch groups after successful creation
+      await queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
 
       toast({
         title: "Success",
