@@ -33,7 +33,7 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
     return (
       <Button
         variant="ghost"
-        className="w-full flex justify-between items-center py-2 px-4"
+        className="w-full flex justify-between items-center py-2 px-6"
         onClick={() => setIsOpen(true)}
       >
         <span className="text-sm text-muted-foreground">Show all posts with similarity scores</span>
@@ -43,10 +43,10 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 px-6">
       <Button
         variant="ghost"
-        className="w-full flex justify-between items-center py-2 px-4"
+        className="w-full flex justify-between items-center py-2"
         onClick={() => setIsOpen(false)}
       >
         <span className="text-sm text-muted-foreground">Hide posts</span>
@@ -58,10 +58,10 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
           Finding related posts...
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {relatedPosts?.map((post) => (
             <div key={post.id} className="opacity-80 hover:opacity-100 transition-opacity">
-              <div className="text-sm text-muted-foreground mb-2 px-4">
+              <div className="text-sm text-muted-foreground mb-2">
                 <div className="flex justify-between items-center">
                   <span>
                     Similarity score: {(post.similarity * 100).toFixed(2)}%
