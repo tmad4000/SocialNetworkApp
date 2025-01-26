@@ -7,10 +7,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import type { NewUser } from "@db/schema";
+import { useMutation } from "@tanstack/react-query";
 
 type RegisterFormData = NewUser & {
   bio?: string;
   lookingFor?: string;
+  ideas?: string;
+};
+
+type PostsToCreate = {
+  content: string;
+  userId: number;
 };
 
 export default function AuthPage() {
@@ -30,6 +37,24 @@ export default function AuthPage() {
       password: "",
       bio: "",
       lookingFor: "",
+      ideas: "",
+    },
+  });
+
+  const createPosts = useMutation({
+    mutationFn: async (posts: PostsToCreate[]) => {
+      for (const post of posts) {
+        const res = await fetch("/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(post),
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+      }
     },
   });
 
@@ -63,6 +88,31 @@ export default function AuthPage() {
           title: "Registration failed",
           description: result.message,
         });
+        return;
+      }
+
+      // After successful registration, create posts from ideas if any
+      if (data.ideas) {
+        const posts = data.ideas
+          .split(/\n\s*\n/)
+          .map(content => content.trim())
+          .filter(content => content.length > 0)
+          .map(content => ({
+            content,
+            userId: result.userId!,
+          }));
+
+        if (posts.length > 0) {
+          try {
+            await createPosts.mutateAsync(posts);
+          } catch (error: any) {
+            toast({
+              variant: "destructive",
+              title: "Failed to create posts",
+              description: error.message,
+            });
+          }
+        }
       }
     } catch (error) {
       toast({
@@ -135,6 +185,11 @@ export default function AuthPage() {
                 <Input
                   placeholder="What are you looking for? (optional)"
                   {...registerForm.register("lookingFor")}
+                />
+                <Textarea
+                  placeholder="Add your list of ideas, separated by double line breaks (optional)"
+                  {...registerForm.register("ideas")}
+                  className="min-h-[100px]"
                 />
                 <Button type="submit" className="w-full">
                   Register
