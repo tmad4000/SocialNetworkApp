@@ -59,14 +59,22 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
         </div>
       ) : !relatedPosts?.length ? (
         <div className="text-center text-muted-foreground py-4">
-          No related posts found
+          No other posts found
         </div>
       ) : (
         <div className="space-y-4">
           {relatedPosts.map((post) => (
             <div key={post.id} className="opacity-80 hover:opacity-100 transition-opacity">
               <div className="text-sm text-muted-foreground mb-2 px-4">
-                {Math.round(post.similarity * 100)}% similar
+                <div className="flex justify-between items-center">
+                  <span>Similarity score: {(post.similarity * 100).toFixed(2)}%</span>
+                  <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                    Post ID: {post.id}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs font-mono bg-muted p-2 rounded overflow-x-auto">
+                  Content: {post.content}
+                </div>
               </div>
               <PostCard post={post} />
             </div>

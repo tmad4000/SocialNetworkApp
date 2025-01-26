@@ -1143,7 +1143,6 @@ export function registerRoutes(app: Express): Server {
       const allPosts = await db.query.posts.findMany({
         where: not(eq(posts.id, postId)),
         with: {
-          embedding: true,
           user: {
             columns: {
               id: true,
@@ -1151,6 +1150,7 @@ export function registerRoutes(app: Express): Server {
               avatar: true,
             }
           },
+          embedding: true,
           mentions: {
             with: {
               mentionedUser: {
@@ -1166,32 +1166,32 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      // Calculate similarities and sort by relevance
+      // Calculate similarities for all posts
       const postsWithSimilarity = await Promise.all(
-        allPosts
-          .filter(p => p.embedding) // Only posts with embeddings
-          .map(async (p) => {
-            const similarity = calculateCosineSimilarity(
-              post.embedding!.embedding as number[],
-              p.embedding!.embedding as number[]
-            );
+        allPosts.map(async (p) => {
+          let similarity = 0;
 
-            return {
-              ...p,
-              similarity,
-              likeCount: p.likes.length,
-              liked: req.user ? p.likes.some(like => like.userId === req.user.id) : false,
-              likes: undefined,
-            };
-          })
+          if (p.embedding) {
+            similarity = calculateCosineSimilarity(
+              post.embedding!.embedding as number[],
+              p.embedding.embedding as number[]
+            );
+          }
+
+          return {
+            ...p,
+            likeCount: p.likes.length,
+            liked: req.user ? p.likes.some(like => like.userId === req.user.id) : false,
+            similarity,
+            likes: undefined, // Remove the likes array from the response
+          };
+        })
       );
 
-      // Sort by similarity and take top 5
-      const topRelated = postsWithSimilarity
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5);
+      // Sort by similarity (descending) but return all posts
+      const sortedPosts = postsWithSimilarity.sort((a, b) => b.similarity - a.similarity);
 
-      res.json(topRelated);
+      res.json(sortedPosts);
     } catch (error) {
       console.error('Error finding related posts:', error);
       res.status(500).json({ 
