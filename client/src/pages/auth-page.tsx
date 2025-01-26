@@ -17,7 +17,7 @@ type RegisterFormData = NewUser & {
 
 type PostsToCreate = {
   content: string;
-  userId: number;
+  targetUserId?: number;
 };
 
 export default function AuthPage() {
@@ -99,12 +99,16 @@ export default function AuthPage() {
           .filter(content => content.length > 0)
           .map(content => ({
             content,
-            userId: result.userId!,
+            targetUserId: result.userId
           }));
 
         if (posts.length > 0) {
           try {
             await createPosts.mutateAsync(posts);
+            toast({
+              title: "Success",
+              description: `Created ${posts.length} posts from your ideas`,
+            });
           } catch (error: any) {
             toast({
               variant: "destructive",
