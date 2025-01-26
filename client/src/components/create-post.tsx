@@ -43,7 +43,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Clear content state
       setContent("");
       setEditorState("");
@@ -56,7 +56,24 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         root.append(paragraph);
       });
 
-      // Invalidate relevant queries
+      // Update query cache with the new post
+      queryClient.setQueryData(["/api/posts"], (oldData: any[] | undefined) => 
+        oldData ? [data, ...oldData] : [data]
+      );
+
+      if (groupId) {
+        queryClient.setQueryData([`/api/groups/${groupId}/posts`], (oldData: any[] | undefined) =>
+          oldData ? [data, ...oldData] : [data]
+        );
+      }
+
+      if (targetUserId) {
+        queryClient.setQueryData([`/api/posts/user/${targetUserId}`], (oldData: any[] | undefined) =>
+          oldData ? [data, ...oldData] : [data]
+        );
+      }
+
+      // Invalidate all relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
@@ -66,6 +83,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         // Also invalidate group membership as posting adds you to the group
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
       }
+
       onSuccess?.();
       toast({
         title: "Success",
