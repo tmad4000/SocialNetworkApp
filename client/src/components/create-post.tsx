@@ -28,6 +28,12 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
     staleTime: 60000, // Cache for 1 minute
   });
 
+  // Get group data if groupId is provided
+  const { data: group } = useQuery({
+    queryKey: [`/api/groups/${groupId}`],
+    enabled: !!groupId,
+  });
+
   const createPost = useMutation({
     mutationFn: async (content: string) => {
       const res = await fetch("/api/posts", {
@@ -56,32 +62,40 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         root.append(paragraph);
       });
 
+      // Add group data to the optimistic update if this is a group post
+      const optimisticPost = {
+        ...data,
+        group: groupId && group ? {
+          id: group.id,
+          name: group.name,
+        } : undefined
+      };
+
       // Update query cache with the new post
       queryClient.setQueryData(["/api/posts"], (oldData: any[] | undefined) => 
-        oldData ? [data, ...oldData] : [data]
+        oldData ? [optimisticPost, ...oldData] : [optimisticPost]
       );
 
       if (groupId) {
         queryClient.setQueryData([`/api/groups/${groupId}/posts`], (oldData: any[] | undefined) =>
-          oldData ? [data, ...oldData] : [data]
+          oldData ? [optimisticPost, ...oldData] : [optimisticPost]
         );
       }
 
       if (targetUserId) {
         queryClient.setQueryData([`/api/posts/user/${targetUserId}`], (oldData: any[] | undefined) =>
-          oldData ? [data, ...oldData] : [data]
+          oldData ? [optimisticPost, ...oldData] : [optimisticPost]
         );
       }
 
-      // Invalidate all relevant queries
+      // Invalidate all relevant queries to ensure data consistency
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
       }
       if (groupId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
-        // Also invalidate group membership as posting adds you to the group
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
       }
 
       onSuccess?.();
