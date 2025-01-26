@@ -1899,7 +1899,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      const groupMembers = await db.query.groupMembers.findMany({
+      const members = await db.query.groupMembers.findMany({
         where: eq(groupMembers.groupId, groupId),
         with: {
           user: {
@@ -1913,9 +1913,14 @@ export function registerRoutes(app: Express): Server {
         orderBy: desc(groupMembers.joinedAt),
       });
 
-      // Transform the response to just include user information
-      const members = groupMembers.map(member => member.user);
-      res.json(members);
+      // Map to just return user info
+      const formattedMembers = members.map(member => ({
+        ...member.user,
+        role: member.role,
+        joinedAt: member.joinedAt,
+      }));
+
+      res.json(formattedMembers);
     } catch (error) {
       console.error('Error fetching group members:', error);
       res.status(500).send("Error fetching group members");
