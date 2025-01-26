@@ -29,6 +29,14 @@ export const posts = pgTable("posts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// New table for post embeddings
+export const postEmbeddings = pgTable("post_embeddings", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  embedding: jsonb("embedding").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -85,6 +93,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   comments: many(comments),
   mentions: many(postMentions),
   likes: many(postLikes),
+  embedding: one(postEmbeddings), // Add relation to embedding
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -153,6 +162,13 @@ export const userEmbeddingsRelations = relations(userEmbeddings, ({ one }) => ({
   }),
 }));
 
+export const postEmbeddingsRelations = relations(postEmbeddings, ({ one }) => ({
+  post: one(posts, {
+    fields: [postEmbeddings.postId],
+    references: [posts.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -192,3 +208,8 @@ export const insertUserEmbeddingSchema = createInsertSchema(userEmbeddings);
 export const selectUserEmbeddingSchema = createSelectSchema(userEmbeddings);
 export type UserEmbedding = typeof userEmbeddings.$inferSelect;
 export type NewUserEmbedding = typeof userEmbeddings.$inferInsert;
+
+export const insertPostEmbeddingSchema = createInsertSchema(postEmbeddings);
+export const selectPostEmbeddingSchema = createSelectSchema(postEmbeddings);
+export type PostEmbedding = typeof postEmbeddings.$inferSelect;
+export type NewPostEmbedding = typeof postEmbeddings.$inferInsert;

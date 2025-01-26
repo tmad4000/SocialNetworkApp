@@ -25,6 +25,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import LexicalEditor from "./lexical-editor";
+import RelatedPosts from "./related-posts";
 
 interface PostCardProps {
   post: Post & {
@@ -296,6 +297,9 @@ export default function PostCard({ post }: PostCardProps) {
           </CollapsibleContent>
         </CardFooter>
       </Collapsible>
+      <div className="border-t">
+        <RelatedPosts postId={post.id} />
+      </div>
     </Card>
   );
 }

@@ -1267,5 +1267,137 @@ export function registerRoutes(app: Express): HTTPServer {
     });
   });
 
+  // Add after the existing GET /api/posts endpoint
+
+  // Update the related posts endpoint
+  app.get("/api/posts/:id/related", async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).send("Invalid post ID");
+      }
+
+      // Get the target post and its embedding
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+        with: {
+          embedding: true,
+        },
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
+      const model = new FlagEmbedding({ normalize: true });
+
+      // If post has no embedding, generate one
+      if (!post.embedding) {
+        const embeddings = await model.embed([post.content]);
+        const embedding = Array.from(embeddings[0]);
+
+        // Store embedding
+        await db.insert(postEmbeddings).values({
+          postId,
+          embedding,
+        });
+
+        post.embedding = { embedding };
+      }
+
+      // Get all other posts with embeddings
+      const allPosts = await db.query.posts.findMany({
+        where: not(eq(posts.id, postId)),
+        with: {
+          embedding: true,
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          likes: true,
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          }
+        },
+        orderBy: desc(posts.createdAt),
+      });
+
+      // Calculate similarity scores
+      const relatedPosts = await Promise.all(
+        allPosts
+          .filter(p => p.embedding) // Only posts with embeddings
+          .map(async (p) => {
+            const similarity = post.embedding!.embedding.reduce(
+              (sum: number, a: number, i: number) => sum + a * (p.embedding!.embedding[i] as number), 
+              0
+            );
+
+            return {
+              ...p,
+              similarity,
+              likeCount: p.likes.length,
+              liked: req.user ? p.likes.some(like => like.userId === req.user.id) : false,
+              likes: undefined,
+            };
+          })
+      );
+
+      // Sort by similarity and return top 5
+      const topRelated = relatedPosts
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5);
+
+      res.json(topRelated);
+    } catch (error) {
+      console.error('Error finding related posts:', error);
+      res.status(500).json({ message: "Error finding related posts" });
+    }
+  });
+
+  // Add middleware to generate embeddings for new posts
+  app.use(async (req, res, next) => {
+    const originalEnd = res.end;
+    // @ts-ignore
+    res.end = async function (...args) {
+      // Check if this was a POST to /api/posts that succeeded
+      if (req.method === 'POST' && req.path === '/api/posts' && res.statusCode === 200) {
+        try {
+          const responseBody = JSON.parse(args[0].toString());
+          if (responseBody.id) {
+            // Generate and store embedding
+            const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
+            const model = new FlagEmbedding({ normalize: true });
+            const embeddings = await model.embed([responseBody.content]);
+            const embedding = Array.from(embeddings[0]);
+
+            await db.insert(postEmbeddings).values({
+              postId: responseBody.id,
+              embedding,
+            });
+
+            console.log('Generated embedding for post:', responseBody.id);
+          }
+        } catch (error) {
+          console.error('Error generating embedding:', error);
+        }
+      }
+
+      return originalEnd.apply(res, args as any);
+    };
+    next();
+  });
+
   return httpServer;
 }
