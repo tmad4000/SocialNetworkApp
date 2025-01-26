@@ -487,39 +487,36 @@ export function registerRoutes(app: Express): HTTPServer {
         .returning();
 
       // Get user's current embeddings
-      const [userEmbedding] = await db
-        .select()
-        .from(userEmbeddings)
-        .where(eq(userEmbeddings.userId, req.user.id));
-
-      // Calculate new bio embedding
-      const pipeline = await import("@xenova/transformers").then(m => m.pipeline);
-      const model = await pipeline("feature-extraction", "distilbert-base-uncased");
-      const output = await model(bio || "");
-      const vectors = output[0];
-
-      // Average the vectors
-      const bioEmbedding = vectors[0].map((_: number, col: number) => {
-        let sum = 0;
-        for (let row = 0; row < vectors.length; row++) {
-          sum += vectors[row][col];
-        }
-        return sum / vectors.length;
+      const userEmbedding = await db.query.userEmbeddings.findFirst({
+        where: eq(userEmbeddings.userId, req.user.id),
       });
 
-      // Update or create embeddings
-      if (userEmbedding) {
-        await db
-          .update(userEmbeddings)
-          .set({ bioEmbedding })
-          .where(eq(userEmbeddings.userId, req.user.id));
-      } else {
-        await db
-          .insert(userEmbeddings)
-          .values({
-            userId: req.user.id,
-            bioEmbedding,
-          });
+      // Calculate new bio embedding if bio is not empty
+      if (bio) {
+        try {
+          const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
+          const model = new FlagEmbedding({ normalize: true });
+          const embeddings = await model.embed([bio]);
+          const bioEmbedding = Array.from(embeddings[0]);
+
+          // Update or create embeddings
+          if (userEmbedding) {
+            await db
+              .update(userEmbeddings)
+              .set({ bioEmbedding })
+              .where(eq(userEmbeddings.userId, req.user.id));
+          } else {
+            await db
+              .insert(userEmbeddings)
+              .values({
+                userId: req.user.id,
+                bioEmbedding,
+              });
+          }
+        } catch (error) {
+          // Log error but don't fail the request
+          console.error('Error calculating bio embedding:', error);
+        }
       }
 
       res.json(updatedUser);
