@@ -2,6 +2,24 @@ import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizz
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
 
+// Add groups table
+export const groups = pgTable("groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+});
+
+// Add group members table
+export const groupMembers = pgTable("group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").references(() => groups.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  role: text("role").notNull().default('member'), // 'member' or 'admin'
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
@@ -13,18 +31,21 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// User embeddings table
 export const userEmbeddings = pgTable("user_embeddings", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull().unique(),
   bioEmbedding: jsonb("bio_embedding"),
   lookingForEmbedding: jsonb("looking_for_embedding"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Update posts table to include optional groupId
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
   userId: integer("user_id").references(() => users.id).notNull(),
+  groupId: integer("group_id").references(() => groups.id),
   status: text("status").notNull().default('none'),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -82,7 +103,12 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   mentions: many(postMentions, { relationName: "mentionedIn" }),
   sentFriendRequests: many(friends, { relationName: "sentFriendRequests" }),
   receivedFriendRequests: many(friends, { relationName: "receivedFriendRequests" }),
-  embeddings: one(userEmbeddings),
+  embeddings: one(userEmbeddings, {
+    fields: [users.id],
+    references: [userEmbeddings.userId],
+  }),
+  createdGroups: many(groups, {relationName: 'createdGroups'}),
+  groupMemberships: many(groupMembers),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -90,10 +116,14 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     fields: [posts.userId],
     references: [users.id],
   }),
+  group: one(groups, {
+    fields: [posts.groupId],
+    references: [groups.id],
+  }),
   comments: many(comments),
   mentions: many(postMentions),
   likes: many(postLikes),
-  embedding: one(postEmbeddings), // Add relation to embedding
+  embedding: one(postEmbeddings),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -169,6 +199,26 @@ export const postEmbeddingsRelations = relations(postEmbeddings, ({ one }) => ({
   }),
 }));
 
+export const groupsRelations = relations(groups, ({ many, one }) => ({
+  members: many(groupMembers),
+  posts: many(posts),
+  creator: one(users, {
+    fields: [groups.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupMembers.groupId],
+    references: [groups.id],
+  }),
+  user: one(users, {
+    fields: [groupMembers.userId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -213,3 +263,13 @@ export const insertPostEmbeddingSchema = createInsertSchema(postEmbeddings);
 export const selectPostEmbeddingSchema = createSelectSchema(postEmbeddings);
 export type PostEmbedding = typeof postEmbeddings.$inferSelect;
 export type NewPostEmbedding = typeof postEmbeddings.$inferInsert;
+
+export const insertGroupSchema = createInsertSchema(groups);
+export const selectGroupSchema = createSelectSchema(groups);
+export type Group = typeof groups.$inferSelect;
+export type NewGroup = typeof groups.$inferInsert;
+
+export const insertGroupMemberSchema = createInsertSchema(groupMembers);
+export const selectGroupMemberSchema = createSelectSchema(groupMembers);
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type NewGroupMember = typeof groupMembers.$inferInsert;

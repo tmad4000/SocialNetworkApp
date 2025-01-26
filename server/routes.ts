@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings } from "@db/schema";
+import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings, groups, groupMembers } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { generateEmbedding, calculateCosineSimilarity } from "./embeddings";
 
@@ -667,12 +667,396 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add new group routes to the existing routes
+  // Place this after the user routes but before the posts routes
+
+  // Create group
+  app.post("/api/groups", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { name, description } = req.body;
+    if (!name || typeof name !== "string") {
+      return res.status(400).send("Group name is required");
+    }
+
+    try {
+      const [newGroup] = await db
+        .insert(groups)
+        .values({
+          name,
+          description,
+          createdBy: req.user.id,
+        })
+        .returning();
+
+      // Add creator as first member with admin role
+      await db.insert(groupMembers).values({
+        groupId: newGroup.id,
+        userId: req.user.id,
+        role: 'admin',
+      });
+
+      res.json(newGroup);
+    } catch (error) {
+      console.error('Error creating group:', error);
+      res.status(500).send("Error creating group");
+    }
+  });
+
+  // Get all groups
+  app.get("/api/groups", async (req, res) => {
+    try {
+      const allGroups = await db.query.groups.findMany({
+        with: {
+          creator: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          members: {
+            with: {
+              user: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          }
+        },
+      });
+
+      const groupsWithMemberCount = allGroups.map(group => ({
+        ...group,
+        memberCount: group.members.length,
+        members: undefined, // Don't send full member list in groups overview
+      }));
+
+      res.json(groupsWithMemberCount);
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+      res.status(500).send("Error fetching groups");
+    }
+  });
+
+  // Get single group
+  app.get("/api/groups/:id", async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      const group = await db.query.groups.findFirst({
+        where: eq(groups.id, groupId),
+        with: {
+          creator: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          members: {
+            with: {
+              user: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!group) {
+        return res.status(404).send("Group not found");
+      }
+
+      res.json(group);
+    } catch (error) {
+      console.error('Error fetching group:', error);
+      res.status(500).send("Error fetching group");
+    }
+  });
+
+  // Join group
+  app.post("/api/groups/:id/join", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      // Check if user is already a member
+      const existingMember = await db.query.groupMembers.findFirst({
+        where: and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, req.user.id)
+        ),
+      });
+
+      if (existingMember) {
+        return res.status(400).send("Already a member of this group");
+      }
+
+      // Add user as member
+      const [newMember] = await db
+        .insert(groupMembers)
+        .values({
+          groupId,
+          userId: req.user.id,
+          role: 'member',
+        })
+        .returning();
+
+      res.json(newMember);
+    } catch (error) {
+      console.error('Error joining group:', error);
+      res.status(500).send("Error joining group");
+    }
+  });
+
+  // Leave group
+  app.post("/api/groups/:id/leave", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      // Check if user is a member
+      const membership = await db.query.groupMembers.findFirst({
+        where: and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, req.user.id)
+        ),
+      });
+
+      if (!membership) {
+        return res.status(400).send("Not a member of this group");
+      }
+
+      // Check if user is the last admin
+      const group = await db.query.groups.findFirst({
+        where: eq(groups.id, groupId),
+        with: {
+          members: {
+            where: eq(groupMembers.role, 'admin'),
+          },
+        },
+      });
+
+      if (group?.members.length === 1 && group.members[0].userId === req.user.id) {
+        return res.status(400).send("Cannot leave group as last admin");
+      }
+
+      // Remove membership
+      await db
+        .delete(groupMembers)
+        .where(
+          and(
+            eq(groupMembers.groupId, groupId),
+            eq(groupMembers.userId, req.user.id)
+          )
+        );
+
+      res.json({ message: "Successfully left group" });
+    } catch (error) {
+      console.error('Error leaving group:', error);
+      res.status(500).send("Error leaving group");
+    }
+  });
+
+  // Update group description
+  app.put("/api/groups/:id", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    const { description } = req.body;
+    if (typeof description !== "string") {
+      return res.status(400).send("Description must be a string");
+    }
+
+    try {
+      // Check if user is an admin
+      const membership = await db.query.groupMembers.findFirst({
+        where: and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, req.user.id),
+          eq(groupMembers.role, 'admin')
+        ),
+      });
+
+      if (!membership) {
+        return res.status(403).send("Only admins can update group details");
+      }
+
+      const [updatedGroup] = await db
+        .update(groups)
+        .set({ description })
+        .where(eq(groups.id, groupId))
+        .returning();
+
+      res.json(updatedGroup);
+    } catch (error) {
+      console.error('Error updating group:', error);
+      res.status(500).send("Error updating group");
+    }
+  });
+
+  // Get group posts
+  app.get("/api/groups/:id/posts", async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      const groupPosts = await db.query.posts.findMany({
+        where: eq(posts.groupId, groupId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          },
+          likes: true,
+        },
+        orderBy: desc(posts.createdAt),
+      });
+
+      // Transform posts to include like count and liked status
+      const postsWithLikeInfo = groupPosts.map(post => ({
+        ...post,
+        likeCount: post.likes.length,
+        liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
+        likes: undefined, // Remove the likes array from the response
+      }));
+
+      res.json(postsWithLikeInfo);
+    } catch (error) {
+      console.error('Error fetching group posts:', error);
+      res.status(500).send("Error fetching group posts");
+    }
+  });
+
+  // Get matched users in group
+  app.get("/api/groups/:id/matches", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      // Get current user's looking for and bio embeddings
+      const userEmbed = await db.query.userEmbeddings.findFirst({
+        where: eq(userEmbeddings.userId, req.user.id),
+      });
+
+      if (!userEmbed || (!userEmbed.lookingForEmbedding && !userEmbed.bioEmbedding)) {
+        return res.status(400).send("User embeddings not found");
+      }
+
+      // Get all group members' embeddings
+      const groupMembersWithEmbeddings = await db.query.groupMembers.findMany({
+        where: eq(groupMembers.groupId, groupId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+              bio: true,
+              lookingFor: true,
+            },
+            with: {
+              embeddings: true,
+            }
+          }
+        }
+      });
+
+      // Calculate similarity scores
+      const membersWithScores = groupMembersWithEmbeddings
+        .filter(member => member.userId !== req.user.id)
+        .map(member => {
+          let score = 0;
+          const memberEmbed = member.user.embeddings;
+
+          if (memberEmbed && userEmbed.lookingForEmbedding && memberEmbed.bioEmbedding) {
+            score += calculateCosineSimilarity(
+              userEmbed.lookingForEmbedding as number[],
+              memberEmbed.bioEmbedding as number[]
+            );
+          }
+
+          if (memberEmbed && userEmbed.bioEmbedding && memberEmbed.lookingForEmbedding) {
+            score += calculateCosineSimilarity(
+              userEmbed.bioEmbedding as number[],
+              memberEmbed.lookingForEmbedding as number[]
+            );
+          }
+
+          return {
+            ...member.user,
+            score: score / 2, // Average of both similarity scores
+            embeddings: undefined, // Remove embeddings from response
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      res.json(membersWithScores);
+    } catch (error) {
+      console.error('Error fetching group matches:', error);
+      res.status(500).send("Error fetching group matches");
+    }
+  });
+
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
     }
 
-    const { content, targetUserId } = req.body;
+    const { content, targetUserId, groupId } = req.body;
     if (!content) {
       return res.status(400).send("Content is required");
     }
@@ -685,6 +1069,7 @@ export function registerRoutes(app: Express): Server {
           content,
           userId: req.user.id,
           status: 'none',
+          groupId: groupId, // Add group ID to the post if provided
         })
         .returning();
 
@@ -771,6 +1156,7 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/posts", async (req, res) => {
     const userId = req.user?.id;
     const showStatusOnly = req.query.status === 'true';
+    const groupId = parseInt(req.query.groupId as string || ""); //Added groupId parameter handling
 
     try {
       const allPosts = await db.query.posts.findMany({
