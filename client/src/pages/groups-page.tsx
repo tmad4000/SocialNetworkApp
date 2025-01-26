@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Search, Plus, Users as UsersIcon, Loader2 } from "lucide-react";
+import { Search, Plus, Users as UsersIcon, Trash2, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,20 +13,63 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import type { Group } from "@db/schema";
+import type { Group, User } from "@db/schema";
 
 type GroupWithMemberCount = Group & {
   memberCount: number;
+  creator: User;
 };
 
 export default function GroupsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [groupToDelete, setGroupToDelete] = useState<GroupWithMemberCount | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/user"],
+  });
 
   const { data: groups, isLoading } = useQuery<GroupWithMemberCount[]>({
     queryKey: ["/api/groups"],
   });
+
+  const handleDeleteGroup = async (group: GroupWithMemberCount) => {
+    try {
+      const res = await fetch(`/api/groups/${group.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      await queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+
+      toast({
+        title: "Success",
+        description: "Group deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete group",
+      });
+    } finally {
+      setGroupToDelete(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -64,32 +107,47 @@ export default function GroupsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredGroups?.map((group) => (
-          <Link key={group.id} href={`/groups/${group.id}`}>
-            <Card className="hover:bg-accent transition-colors cursor-pointer">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage
-                      src={`https://api.dicebear.com/7.x/shapes/svg?seed=${group.name}`}
-                    />
-                    <AvatarFallback>{group.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold truncate">{group.name}</h2>
-                    {group.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {group.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+          <Card key={group.id} className="hover:bg-accent transition-colors">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage
+                    src={`https://api.dicebear.com/7.x/shapes/svg?seed=${group.name}`}
+                  />
+                  <AvatarFallback>{group.name[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <Link href={`/groups/${group.id}`}>
+                    <h2 className="font-semibold truncate cursor-pointer">{group.name}</h2>
+                  </Link>
+                  {group.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {group.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <UsersIcon className="h-4 w-4" />
                       <span>{group.memberCount} members</span>
                     </div>
+                    {currentUser?.id === group.creator.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setGroupToDelete(group);
+                        }}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -98,6 +156,27 @@ export default function GroupsPage() {
           {searchQuery ? "No groups found matching your search." : "No groups created yet."}
         </div>
       )}
+
+      <AlertDialog open={!!groupToDelete} onOpenChange={() => setGroupToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{groupToDelete?.name}"? This action cannot be undone.
+              All posts and memberships will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => groupToDelete && handleDeleteGroup(groupToDelete)}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

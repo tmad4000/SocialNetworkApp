@@ -927,6 +927,43 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Delete group
+  app.delete("/api/groups/:id", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      // Check if group exists and user is creator
+      const group = await db.query.groups.findFirst({
+        where: eq(groups.id, groupId),
+      });
+
+      if (!group) {
+        return res.status(404).send("Group not found");
+      }
+
+      if (group.createdBy !== req.user.id) {
+        return res.status(403).send("Only group creator can delete the group");
+      }
+
+      // Delete all related records first
+      await db.delete(groupMembers).where(eq(groupMembers.groupId, groupId));
+      await db.delete(posts).where(eq(posts.groupId, groupId));
+      await db.delete(groups).where(eq(groups.id, groupId));
+
+      res.json({ message: "Group deleted successfully" });
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      res.status(500).send("Error deleting group");
+    }
+  });
+
   // Get group posts
   app.get("/api/groups/:id/posts", async (req, res) => {
     const groupId = parseInt(req.params.id);
@@ -994,7 +1031,7 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (!userEmbed || (!userEmbed.lookingForEmbedding && !userEmbed.bioEmbedding)) {
-        return res.status(400).send("User embeddings not found");
+        return res.status(40).send("User embeddings not found");
       }
 
       // Get all group members' embeddings
