@@ -1050,13 +1050,13 @@ export function registerRoutes(app: Express): Server {
 
     // Transform response to include like count and liked status
     const response = {
-      ...postWithMentions,
-      likeCount: postWithMentions?.likes.length || 0,
-      liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
-      likes: undefined, // Remove the likes array from the response
-    };
+        ...postWithMentions,
+        likeCount: postWithMentions?.likes.length || 0,
+        liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
+        likes: undefined, // Remove the likes array from the response
+      };
 
-    res.json(response);
+      res.json(response);
   });
 
   app.delete("/api/posts/:id", async (req, res) => {
@@ -1168,11 +1168,29 @@ export function registerRoutes(app: Express): Server {
       }
 
       const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
-      const model = new FlagEmbedding({ normalize: true });
+      const model = await FlagEmbedding.init({ normalize: true });
+
+      // Helper function to preprocess text
+      const preprocessText = (text: string): string => {
+        return text
+          .toLowerCase()
+          // Replace newlines with spaces
+          .replace(/\n+/g, ' ')
+          // Remove special characters except letters and spaces
+          .replace(/[^a-z\s]/g, ' ')
+          // Remove extra spaces
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
 
       // If post has no embedding, generate one
       if (!post.embedding) {
-        const embeddings = await model.embed([post.content]);
+        const preprocessedContent = preprocessText(post.content);
+        const embeddings = await model.embed([preprocessedContent]);
+        if (!embeddings || !embeddings[0]) {
+          throw new Error("Failed to generate embedding for post");
+        }
+
         const embedding = Array.from(embeddings[0]);
 
         // Store embedding
@@ -1189,6 +1207,7 @@ export function registerRoutes(app: Express): Server {
         allPosts
           .filter(p => p.embedding) // Only posts with embeddings
           .map(async (p) => {
+            // Calculate cosine similarity between embeddings
             const similarity = post.embedding!.embedding.reduce(
               (sum: number, a: number, i: number) => sum + a * (p.embedding!.embedding[i] as number),
               0
@@ -1212,7 +1231,7 @@ export function registerRoutes(app: Express): Server {
       res.json(topRelated);
     } catch (error) {
       console.error('Error finding related posts:', error);
-      res.status(500).json({ message: "Error finding related posts" });
+      res.status(500).json({ message: "Error finding related posts", error: (error as Error).message });
     }
   });
 
@@ -1225,10 +1244,28 @@ export function registerRoutes(app: Express): Server {
         try {
           const responseBody = JSON.parse(args[0].toString());
           if (responseBody.id) {
+            // Preprocess the text
+            const preprocessText = (text: string): string => {
+              return text
+                .toLowerCase()
+                // Replace newlines with spaces
+                .replace(/\n+/g, ' ')
+                // Remove special characters except letters and spaces
+                .replace(/[^a-z\s]/g, ' ')
+                // Remove extra spaces
+                .replace(/\s+/g, ' ')
+                .trim();
+            };
+
+            const preprocessedContent = preprocessText(responseBody.content);
+
             // Generate and store embedding
             const FlagEmbedding = (await import("fastembed")).FlagEmbedding;
-            const model = new FlagEmbedding({ normalize: true });
-            const embeddings = await model.embed([responseBody.content]);
+            const model = await FlagEmbedding.init({ normalize: true });
+            const embeddings = await model.embed([preprocessedContent]);
+            if (!embeddings || !embeddings[0]) {
+              throw new Error("Failed to generate embedding for post");
+            }
             const embedding = Array.from(embeddings[0]);
 
             await db.insert(postEmbeddings).values({
