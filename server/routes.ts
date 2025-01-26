@@ -4,103 +4,9 @@ import { setupAuth } from "./auth";
 import { db } from "@db";
 import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
-import { WebSocket, WebSocketServer } from 'ws';
-import session from 'express-session';
-import { parse } from 'url';
-import type { IncomingMessage } from 'http';
-import MemoryStore from 'memorystore';
-
-// Map to store active WebSocket connections with error handling
-const connectedClients = new Map<number, WebSocket>();
-
-// Improved broadcast function with error handling
-function broadcastToUser(userId: number, notification: any) {
-  try {
-    const client = connectedClients.get(userId);
-    if (client?.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(notification));
-    } else if (client) {
-      // Clean up stale connections
-      connectedClients.delete(userId);
-      console.log(`Removed stale connection for user ${userId}`);
-    }
-  } catch (error) {
-    console.error(`Error broadcasting to user ${userId}:`, error);
-    // Clean up failed connection
-    connectedClients.delete(userId);
-  }
-}
 
 export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
-
-  // Get session middleware instance with ESM imports
-  const MemoryStoreClass = MemoryStore(session);
-  const sessionParser = session({
-    secret: process.env.SESSION_SECRET || 'keyboard cat',
-    resave: false,
-    saveUninitialized: false,
-    store: new MemoryStoreClass({
-      checkPeriod: 86400000 // prune expired entries every 24h
-    }),
-    cookie: { 
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
-    }
-  });
-
-  app.use(sessionParser);
-
-  // Initialize WebSocket server
-  const wss = new WebSocketServer({ 
-    noServer: true // Important: use noServer mode
-  });
-
-  // Handle upgrade with session parsing
-  httpServer.on('upgrade', function(request: IncomingMessage, socket, head) {
-    const { pathname } = parse(request.url || '', true);
-
-    if (pathname === '/ws') {
-      sessionParser(request as any, {} as any, () => {
-        if (!(request as any).session?.passport?.user) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-
-        wss.handleUpgrade(request, socket, head, function(ws) {
-          wss.emit('connection', ws, request);
-        });
-      });
-    } else {
-      socket.destroy();
-    }
-  });
-
-  // WebSocket connection handling
-  wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
-    const userId = (request as any).session.passport.user;
-    console.log(`WebSocket connected for user ${userId}`);
-
-    // Store the connection
-    connectedClients.set(userId, ws);
-
-    // Handle connection close
-    ws.on('close', () => {
-      console.log(`WebSocket disconnected for user ${userId}`);
-      connectedClients.delete(userId);
-    });
-
-    // Handle errors
-    ws.on('error', (error) => {
-      console.error(`WebSocket error for user ${userId}:`, error);
-      connectedClients.delete(userId);
-      ws.terminate();
-    });
-
-    // Send initial connection success message
-    ws.send(JSON.stringify({ type: 'CONNECTED' }));
-  });
 
   setupAuth(app);
 
@@ -154,17 +60,6 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Send real-time notification to the recipient
-      broadcastToUser(friendId, {
-        type: 'FRIEND_REQUEST',
-        data: {
-          requestId: newRequest.id,
-          userId: req.user.id,
-          username: req.user.username,
-          action: 'sent you a friend request'
-        }
-      });
-
       res.json(newRequest);
     } catch (error) {
       console.error('Error creating friend request:', error);
@@ -203,17 +98,6 @@ export function registerRoutes(app: Express): Server {
         .set({ status: "accepted" })
         .where(eq(friends.id, requestId))
         .returning();
-
-      // Send real-time notification to the sender
-      broadcastToUser(friendRequest.userId, {
-        type: 'FRIEND_REQUEST_ACCEPTED',
-        data: {
-          requestId: updatedRequest.id,
-          userId: req.user.id,
-          username: req.user.username,
-          action: 'accepted your friend request'
-        }
-      });
 
       res.json(updatedRequest);
     } catch (error) {
@@ -318,19 +202,6 @@ export function registerRoutes(app: Express): Server {
         .from(postLikes)
         .where(eq(postLikes.postId, postId));
       result = { liked: true, likeCount: likeCount[0].count };
-
-      // Send notification to post owner
-      if (post.userId !== req.user.id) {
-        broadcastToUser(post.userId, {
-          type: 'LIKE',
-          data: {
-            postId,
-            userId: req.user.id,
-            username: req.user.username,
-            action: 'liked your post'
-          }
-        });
-      }
     }
 
     res.json(result);
@@ -553,20 +424,6 @@ export function registerRoutes(app: Express): Server {
           userId: req.user.id,
         })
         .returning();
-
-      // Send notification to post owner
-      if (post.userId !== req.user.id) {
-        broadcastToUser(post.userId, {
-          type: 'COMMENT',
-          data: {
-            postId,
-            commentId: newComment.id,
-            userId: req.user.id,
-            username: req.user.username,
-            action: 'commented on your post'
-          }
-        });
-      }
 
       // Return comment with user information
       const commentWithUser = await db.query.comments.findFirst({
@@ -1041,7 +898,7 @@ export function registerRoutes(app: Express): Server {
           likes: undefined,
         }))
       ].sort((a, b) =>
-        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
       );
 
       // Remove duplicates (in case a user is both creator and mentioned)
@@ -1070,7 +927,8 @@ export function registerRoutes(app: Express): Server {
             columns: {
               id: true,
               username: true,
-              avatar: true,            }
+              avatar: true,
+            }
           },
           mentions: {
             with: {
@@ -1084,9 +942,11 @@ export function registerRoutes(app: Express): Server {
             }
           },
           likes: true,
-        },      });
+        },
+      });
 
-      if (!post) {        return res.status(404).send("Post not found");
+      if (!post) {
+        return res.status(404).send("Post not found");
       }
 
       const postWithLikeInfo = {
@@ -1467,22 +1327,6 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Send notification with retry
-      try {
-        broadcastToUser(friendId, {
-          type: 'FRIEND_REQUEST',
-          data: {
-            requestId: newRequest.id,
-            userId: req.user.id,
-            username: req.user.username,
-            action: 'sent you a friend request'
-          }
-        });
-        console.log(`Friend request notification sent to user ${friendId}`);
-      } catch (notificationError) {
-        console.error('Error sending friend request notification:', notificationError);
-        // Continue with the request even if notification fails
-      }
 
       res.json(newRequest);
     } catch (error) {
