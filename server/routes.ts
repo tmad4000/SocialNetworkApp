@@ -326,6 +326,25 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/comments/:id/count", async (req, res) => {
+    try {
+      const commentId = parseInt(req.params.id);
+      if (isNaN(commentId)) {
+        return res.status(400).json({ message: "Invalid comment ID" });
+      }
+
+      const count = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(commentLikes)
+        .where(eq(commentLikes.commentId, commentId));
+
+      res.json({ count: count[0].count });
+    } catch (error) {
+      console.error('Error fetching comment count:', error);
+      res.status(500).json({ message: "Error fetching comment count" });
+    }
+  });
+
   app.get("/api/posts/:id/comments/count", async (req, res) => {
     try {
       const postId = parseInt(req.params.id);
@@ -1190,7 +1209,7 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      // Calculate similarity scores for all posts
+      // Calculate similarity scores for all posts and include all posts in response
       const postsWithScores = allPosts
         .map(post => {
           // Calculate similarity if the post has an embedding
@@ -1207,12 +1226,11 @@ export function registerRoutes(app: Express): Server {
             likeCount: post.likes.length,
             liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
             likes: undefined, // Remove the likes array from the response
+            embedding: undefined, // Remove the embedding from the response
           };
         })
         // Sort by similarity score in descending order
-        .sort((a, b) => b.similarity - a.similarity)
-        // Filter posts below threshold (for debugging, showing all posts)
-        .filter(post => post.similarity >= POST_SIMILARITY_THRESHOLD);
+        .sort((a, b) => b.similarity - a.similarity);
 
       res.json(postsWithScores);
     } catch (error) {

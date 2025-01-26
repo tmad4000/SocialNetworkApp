@@ -36,7 +36,7 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
         className="w-full flex justify-between items-center py-2 px-4"
         onClick={() => setIsOpen(true)}
       >
-        <span className="text-sm text-muted-foreground">Show related posts</span>
+        <span className="text-sm text-muted-foreground">Show all posts with similarity scores</span>
         <ChevronDown className="h-4 w-4" />
       </Button>
     );
@@ -49,7 +49,7 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
         className="w-full flex justify-between items-center py-2 px-4"
         onClick={() => setIsOpen(false)}
       >
-        <span className="text-sm text-muted-foreground">Hide related posts</span>
+        <span className="text-sm text-muted-foreground">Hide posts</span>
         <ChevronUp className="h-4 w-4" />
       </Button>
 
@@ -57,23 +57,28 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
         <div className="text-center text-muted-foreground py-4">
           Finding related posts...
         </div>
-      ) : !relatedPosts?.length ? (
-        <div className="text-center text-muted-foreground py-4">
-          No other posts found
-        </div>
       ) : (
         <div className="space-y-4">
-          {relatedPosts.map((post) => (
+          {relatedPosts?.map((post) => (
             <div key={post.id} className="opacity-80 hover:opacity-100 transition-opacity">
               <div className="text-sm text-muted-foreground mb-2 px-4">
                 <div className="flex justify-between items-center">
-                  <span>Similarity score: {(post.similarity * 100).toFixed(2)}%</span>
+                  <span>
+                    Similarity score: {(post.similarity * 100).toFixed(2)}%
+                    {post.similarity > 0.7 ? " (Strong match)" : 
+                     post.similarity > 0.4 ? " (Moderate match)" : 
+                     post.similarity > 0.2 ? " (Weak match)" : " (Very weak/no match)"}
+                  </span>
                   <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
                     Post ID: {post.id}
                   </span>
                 </div>
                 <div className="mt-1 text-xs font-mono bg-muted p-2 rounded overflow-x-auto">
-                  Content: {post.content}
+                  Content similarity between:
+                  <br />
+                  Source: {post.content}
+                  <br />
+                  Target: {post.content}
                 </div>
               </div>
               <PostCard post={post} />
