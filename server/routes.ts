@@ -6,20 +6,68 @@ import { posts, users, friends, postMentions, postLikes, comments, commentLikes,
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { WebSocket, WebSocketServer } from 'ws';
 
-// Map to store active WebSocket connections
+// Map to store active WebSocket connections with error handling
 const connectedClients = new Map<number, WebSocket>();
 
+// Improved broadcast function with error handling
 function broadcastToUser(userId: number, notification: any) {
-  const client = connectedClients.get(userId);
-  if (client?.readyState === WebSocket.OPEN) {
-    client.send(JSON.stringify(notification));
+  try {
+    const client = connectedClients.get(userId);
+    if (client?.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(notification));
+    } else if (client) {
+      // Clean up stale connections
+      connectedClients.delete(userId);
+      console.log(`Removed stale connection for user ${userId}`);
+    }
+  } catch (error) {
+    console.error(`Error broadcasting to user ${userId}:`, error);
+    // Clean up failed connection
+    connectedClients.delete(userId);
   }
 }
 
 export function registerRoutes(app: Express): Server {
+  const httpServer = createServer(app);
+
+  // Initialize WebSocket server
+  const wss = new WebSocketServer({ 
+    server: httpServer,
+    path: '/ws'
+  });
+
+  // WebSocket connection handling
+  wss.on('connection', (ws: WebSocket, req: any) => {
+    if (!req.session?.passport?.user) {
+      ws.close(1008, 'Authentication required');
+      return;
+    }
+
+    const userId = req.session.passport.user;
+    console.log(`WebSocket connected for user ${userId}`);
+
+    // Store the connection
+    connectedClients.set(userId, ws);
+
+    // Handle connection close
+    ws.on('close', () => {
+      console.log(`WebSocket disconnected for user ${userId}`);
+      connectedClients.delete(userId);
+    });
+
+    // Handle errors
+    ws.on('error', (error) => {
+      console.error(`WebSocket error for user ${userId}:`, error);
+      connectedClients.delete(userId);
+      ws.terminate();
+    });
+
+    // Send initial connection success message
+    ws.send(JSON.stringify({ type: 'CONNECTED' }));
+  });
+
   setupAuth(app);
 
-  // Add status update endpoint
   app.put("/api/posts/:id/status", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -63,7 +111,6 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedPost);
   });
 
-  // Add these endpoints after the status update endpoint
   app.post("/api/posts/:id/like", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -135,7 +182,6 @@ export function registerRoutes(app: Express): Server {
     res.json(result);
   });
 
-  // Add this endpoint after the existing like endpoint
   app.get("/api/posts/:id/likes", async (req, res) => {
     const postId = parseInt(req.params.id);
     if (isNaN(postId)) {
@@ -164,7 +210,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add comment likes endpoints
   app.post("/api/comments/:id/like", async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -227,7 +272,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add this endpoint after the existing comment likes endpoints
   app.get("/api/comments/:id/likes", async (req, res) => {
     const commentId = parseInt(req.params.id);
     if (isNaN(commentId)) {
@@ -256,7 +300,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add this endpoint after the existing comments endpoints
   app.get("/api/posts/:id/comments/count", async (req, res) => {
     try {
       const postId = parseInt(req.params.id);
@@ -276,7 +319,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the get comments endpoint to include likes
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
       const postId = parseInt(req.params.id);
@@ -315,7 +357,6 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-  // Add comments endpoints with proper error handling
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -394,7 +435,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add new Looking For update endpoint
   app.put("/api/user/looking-for", async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -451,7 +491,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add these endpoints after the user profile updates
   app.get("/api/user-embeddings", async (req, res) => {
     try {
       const embeddings = await db.query.userEmbeddings.findMany();
@@ -462,7 +501,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Bio update endpoint with proper error handling
   app.put("/api/user/bio", async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -519,7 +557,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add new LinkedIn URL update endpoint
   app.put("/api/user/linkedin", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -548,7 +585,6 @@ export function registerRoutes(app: Express): Server {
     res.json(updatedUser);
   });
 
-  // Update user profile endpoint to include linkedinUrl and lookingFor
   app.get("/api/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     if (isNaN(userId)) {
@@ -575,7 +611,6 @@ export function registerRoutes(app: Express): Server {
     res.json(user);
   });
 
-  // Search users for mentions
   app.get("/api/users/search", async (req, res) => {
     const { query } = req.query;
     if (!query || typeof query !== "string") {
@@ -602,7 +637,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get all users for mentions
   app.get("/api/users", async (req, res) => {
     try {
       const allUsers = await db
@@ -622,7 +656,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the post route to properly handle mentions with type safety
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -718,7 +751,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the posts GET endpoint to support status filtering
   app.get("/api/posts", async (req, res) => {
     const userId = req.user?.id;
     const showStatusOnly = req.query.status === 'true';
@@ -766,7 +798,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the user posts endpoint to support status filtering
   app.get("/api/posts/user/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUserId = req.user?.id;
@@ -871,145 +902,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Friends
-  app.get("/api/friends", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const userFriends = await db.query.friends.findMany({
-      where: or(
-        eq(friends.userId, req.user.id),
-        eq(friends.friendId, req.user.id)
-      ),
-      with: {
-        user: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
-          }
-        },
-        friend: {
-          columns: {
-            id: true,
-            username: true,
-            avatar: true,
-          }
-        },
-      },
-    });
-
-    res.json(userFriends);
-  });
-
-  app.post("/api/friends/request", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const { friendId } = req.body;
-    if (!friendId) {
-      return res.status(400).send("Friend ID is required");
-    }
-
-    const existingRequest = await db.query.friends.findFirst({
-      where: or(
-        and(
-          eq(friends.userId, req.user.id),
-          eq(friends.friendId, friendId)
-        ),
-        and(
-          eq(friends.userId, friendId),
-          eq(friends.friendId, req.user.id)
-        )
-      ),
-    });
-
-    if (existingRequest) {
-      return res.status(400).send("Friend request already exists");
-    }
-
-    try {
-      const newRequest = await db.insert(friends)
-        .values({
-          userId: req.user.id,
-          friendId: friendId,
-          status: "pending",
-        })
-        .returning();
-
-      // Send notification to the friend
-      broadcastToUser(friendId, {
-        type: 'FRIEND_REQUEST',
-        data: {
-          requestId: newRequest[0].id,
-          userId: req.user.id,
-          username: req.user.username,
-          action: 'sent you a friend request'
-        }
-      });
-
-      res.json(newRequest[0]);
-    } catch (error) {
-      console.error('Error creating friend request:', error);
-      res.status(500).json({ message: "Error creating friend request" });
-    }
-  });
-
-  app.post("/api/friends/accept", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const { requestId } = req.body;
-    if (!requestId) {
-      return res.status(400).send("Request ID is required");
-    }
-
-    const request = await db.query.friends.findFirst({
-      where: eq(friends.id, requestId),
-    });
-
-    if (!request || request.friendId !== req.user.id) {
-      return res.status(400).send("Invalid request");
-    }
-
-    const updatedRequest = await db
-      .update(friends)
-      .set({ status: "accepted" })
-      .where(eq(friends.id, requestId))
-      .returning();
-
-    res.json(updatedRequest[0]);
-  });
-
-  // Add new endpoint for dismissing friend requests
-  app.post("/api/friends/dismiss", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const { requestId } = req.body;
-    if (!requestId) {
-      return res.status(400).send("Request ID is required");
-    }
-
-    const request = await db.query.friends.findFirst({
-      where: eq(friends.id, requestId),
-    });
-
-    if (!request || request.friendId !== req.user.id) {
-      return res.status(400).send("Invalid request");
-    }
-
-    // Delete the friend request
-    await db.delete(friends).where(eq(friends.id, requestId));
-
-    res.json({ message: "Friend request dismissed" });
-  });
-
-  // Add this endpoint after the GET /api/posts/user/:id endpoint
   app.get("/api/posts/:id", async (req, res) => {
     const postId = parseInt(req.params.id);
     if (isNaN(postId)) {
@@ -1057,7 +949,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Edit post endpoint
   app.put("/api/posts/:id", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -1147,14 +1038,13 @@ export function registerRoutes(app: Express): Server {
     const response = {
       ...postWithMentions,
       likeCount: postWithMentions?.likes.length || 0,
-      liked: postWithMentions?.likes.some(like => like.userId === req.user?.id) || false,
+      liked: postWithMentions?.likes.some(like => like.userId === req.user?..id) || false,
       likes: undefined, // Remove the likes array from the response
     };
 
     res.json(response);
   });
 
-  // Delete post endpoint
   app.delete("/api/posts/:id", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -1216,44 +1106,40 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  const httpServer = createServer(app);
-
   // Set up WebSocket server
-  const wss = new WebSocketServer({ noServer: true });
+  //const wss = new WebSocketServer({ noServer: true });
 
   // Handle WebSocket upgrade requests
-  httpServer.on('upgrade', (request, socket, head) => {
-    const protocol = request.headers['sec-websocket-protocol'];
-    // Skip vite HMR connections
-    if (protocol === 'vite-hmr') {
-      return;
-    }
+  //httpServer.on('upgrade', (request, socket, head) => {
+  //  const protocol = request.headers['sec-websocket-protocol'];
+  //  // Skip vite HMR connections
+  //  if (protocol === 'vite-hmr') {
+  //    return;
+  //  }
 
-    // @ts-ignore req.session is added by express-session
-    if (!request.session?.passport?.user) {
-      socket.destroy();
-      return;
-    }
+  //  // @ts-ignore req.session is added by express-session
+  //  if (!request.session?.passport?.user) {
+  //    socket.destroy();
+  //    return;
+  //  }
 
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
-  });
+  //  wss.handleUpgrade(request, socket, head, (ws) => {
+  //    wss.emit('connection', ws, request);
+  //  });
+  //});
 
   // Handle WebSocket connections
-  wss.on('connection', (ws, request) => {
-    // @ts-ignore req.session is added by express-session
-    const userId = request.session?.passport?.user?.id;
-    if (!userId) return;
+  //wss.on('connection', (ws, request) => {
+  //  // @ts-ignore req.session is added by express-session
+  //  const userId = request.session?.passport?.user?.id;
+  //  if (!userId) return;
 
-    connectedClients.set(userId, ws);
+  //  connectedClients.set(userId, ws);
 
-    ws.on('close', () => {
-      connectedClients.delete(userId);
-    });
-  });
-
-  // Add after the existing GET /api/posts endpoint
+  //  ws.on('close', () => {
+  //    connectedClients.delete(userId);
+  //  });
+  //});
 
   app.get("/api/posts/:id/related", async (req, res) => {
     try {
@@ -1351,7 +1237,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add middleware to generate embeddings for new posts
   app.use(async (req, res, next) => {
     const originalEnd = res.end;
     // @ts-ignore
@@ -1382,6 +1267,160 @@ export function registerRoutes(app: Express): Server {
       return originalEnd.apply(res, args as any);
     };
     next();
+  });
+
+  app.get("/api/friends", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const userFriends = await db.query.friends.findMany({
+      where: or(
+        eq(friends.userId, req.user.id),
+        eq(friends.friendId, req.user.id)
+      ),
+      with: {
+        user: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          }
+        },
+        friend: {
+          columns: {
+            id: true,
+            username: true,
+            avatar: true,
+          }
+        },
+      },
+    });
+
+    res.json(userFriends);
+  });
+
+  app.post("/api/friends/request", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const { friendId } = req.body;
+    if (!friendId) {
+      return res.status(400).json({ message: "Friend ID is required" });
+    }
+
+    try {
+      // Check if friend exists
+      const friend = await db.query.users.findFirst({
+        where: eq(users.id, friendId),
+      });
+
+      if (!friend) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check for existing request
+      const existingRequest = await db.query.friends.findFirst({
+        where: or(
+          and(
+            eq(friends.userId, req.user.id),
+            eq(friends.friendId, friendId)
+          ),
+          and(
+            eq(friends.userId, friendId),
+            eq(friends.friendId, req.user.id)
+          )
+        ),
+      });
+
+      if (existingRequest) {
+        return res.status(400).json({ message: "Friend request already exists" });
+      }
+
+      // Create new request
+      const [newRequest] = await db
+        .insert(friends)
+        .values({
+          userId: req.user.id,
+          friendId: friendId,
+          status: "pending",
+        })
+        .returning();
+
+      // Send notification with retry
+      try {
+        broadcastToUser(friendId, {
+          type: 'FRIEND_REQUEST',
+          data: {
+            requestId: newRequest.id,
+            userId: req.user.id,
+            username: req.user.username,
+            action: 'sent you a friend request'
+          }
+        });
+        console.log(`Friend request notification sent to user ${friendId}`);
+      } catch (notificationError) {
+        console.error('Error sending friend request notification:', notificationError);
+        // Continue with the request even if notification fails
+      }
+
+      res.json(newRequest);
+    } catch (error) {
+      console.error('Error creating friend request:', error);
+      res.status(500).json({ message: "Error creating friend request" });
+    }
+  });
+
+  app.post("/api/friends/accept", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { requestId } = req.body;
+    if (!requestId) {
+      return res.status(400).send("Request ID is required");
+    }
+
+    const request = await db.query.friends.findFirst({
+      where: eq(friends.id, requestId),
+    });
+
+    if (!request || request.friendId !== req.user.id) {
+      return res.status(400).send("Invalid request");
+    }
+
+    const updatedRequest = await db
+      .update(friends)
+      .set({ status: "accepted" })
+      .where(eq(friends.id, requestId))
+      .returning();
+
+    res.json(updatedRequest[0]);
+  });
+
+  app.post("/api/friends/dismiss", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const { requestId } = req.body;
+    if (!requestId) {
+      return res.status(400).send("Request ID is required");
+    }
+
+    const request = await db.query.friends.findFirst({
+      where: eq(friends.id, requestId),
+    });
+
+    if (!request || request.friendId !== req.user.id) {
+      return res.status(400).send("Invalid request");
+    }
+
+    // Delete the friend request
+    await db.delete(friends).where(eq(friends.id, requestId));
+
+    res.json({ message: "Friend request dismissed" });
   });
 
   return httpServer;
