@@ -36,17 +36,17 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    // Sort posts by createdAt in descending order (newest first)
+    // Always sort by createdAt first, regardless of other filters
     let sorted = [...posts].sort((a, b) => 
       new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
     );
 
-    // First apply status filter if enabled
+    // Then apply status filter if enabled
     if (showStatusOnly && selectedStatuses.length > 0) {
       sorted = sorted.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
-    // Then apply search filter if there's a search query
+    // Finally apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       sorted = sorted.filter(post => 
