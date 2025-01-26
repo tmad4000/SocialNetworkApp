@@ -311,6 +311,8 @@ interface LexicalEditorProps {
   onClear?: () => void;
   onSubmit?: () => void;
   autoFocus?: boolean;
+  setEditor?: (editor: any) => void;
+  editorState?: string;
 }
 
 function InitialValuePlugin({ initialValue, initialState }: { initialValue?: string; initialState?: string }) {
@@ -382,7 +384,7 @@ function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function LexicalEditor({
+function LexicalEditor({
   onChange,
   initialValue = "",
   initialState,
@@ -391,10 +393,11 @@ export default function LexicalEditor({
   onClear,
   onSubmit,
   autoFocus,
+  setEditor,
+  editorState,
 }: LexicalEditorProps) {
-  const [editor, setEditor] = useState<any>(null);
+  const [editorInstance, setEditorInstance] = useState<any>(null);
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
-  const shortcutText = `Press ${isMac ? '⌘' : 'Ctrl'}+Enter to ${onSubmit ? 'post' : 'save'}`;
 
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
@@ -406,8 +409,8 @@ export default function LexicalEditor({
 
   // Add method to clear editor content
   const clearContent = useCallback(() => {
-    if (editor) {
-      editor.update(() => {
+    if (editorInstance) {
+      editorInstance.update(() => {
         const root = $getRoot();
         root.clear();
         const paragraph = $createParagraphNode();
@@ -415,7 +418,7 @@ export default function LexicalEditor({
       });
       onClear?.();
     }
-  }, [editor, onClear]);
+  }, [editorInstance, onClear]);
 
   const initialConfig = {
     namespace: "SocialPostEditor",
@@ -423,6 +426,14 @@ export default function LexicalEditor({
     onError: console.error,
     nodes: [MentionNode],
   };
+
+  useEffect(() => {
+    return () => {
+      if (setEditor) {
+        setEditor(null);
+      }
+    };
+  }, [setEditor]);
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
@@ -438,7 +449,14 @@ export default function LexicalEditor({
               <span>{placeholder || "What's on your mind? Use @ to mention users"}</span>
               {onSubmit && (
                 <span className="ml-2 text-sm opacity-50">
-                  ({isMac ? <Command className="w-4 h-4 inline mb-0.5" /> : 'Ctrl'}+Enter to {onSubmit ? 'post' : 'save'})
+                  {isMac ? (
+                    <>
+                      <Command className="w-4 h-4 inline mb-0.5" />
+                      +Enter to {onSubmit ? 'post' : 'save'}
+                    </>
+                  ) : (
+                    <>Ctrl+Enter to {onSubmit ? 'post' : 'save'}</>
+                  )}
                 </span>
               )}
             </div>
@@ -451,7 +469,22 @@ export default function LexicalEditor({
         <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
         <ShortcutPlugin onSubmit={onSubmit} />
         {autoFocus && <AutoFocusPlugin />}
+        <EditorPlugin setEditor={setEditor} />
       </div>
     </LexicalComposer>
   );
 }
+
+function EditorPlugin({ setEditor }: { setEditor?: (editor: any) => void }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (setEditor) {
+      setEditor(editor);
+    }
+  }, [editor, setEditor]);
+
+  return null;
+}
+
+export default LexicalEditor;

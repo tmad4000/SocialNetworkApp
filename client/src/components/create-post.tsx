@@ -48,21 +48,12 @@ export default function CreatePost({ onSuccess, targetUserId }: CreatePostProps)
       setEditorState("");
 
       // Reset Lexical editor state
-      try {
-        if (editor) {
-          editor.update(() => {
-            const root = $getRoot();
-            root.clear();
-            const paragraph = $createParagraphNode();
-            root.append(paragraph);
-          });
-
-          // Force editor to re-render with empty state
-          editor.setEditorState(editor.parseEditorState(""));
-        }
-      } catch (error) {
-        console.error("Error resetting editor:", error);
-      }
+      editor?.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        root.append(paragraph);
+      });
 
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (targetUserId) {
