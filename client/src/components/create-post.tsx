@@ -8,14 +8,12 @@ import LexicalEditor from "./lexical-editor";
 import { $getRoot, $createParagraphNode } from 'lexical';
 import SplitPostsDialog from "./split-posts-dialog";
 import { useUser } from "@/hooks/use-user";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Lock, Users, Globe } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface CreatePostProps {
   onSuccess?: () => void;
@@ -49,7 +47,12 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, targetUserId, groupId, privacy }),
+        body: JSON.stringify({ 
+          content, 
+          targetUserId, 
+          groupId, 
+          privacy // Include privacy setting in new posts
+        }),
         credentials: "include",
       });
 
@@ -78,17 +81,11 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         mentions: [],
         likeCount: 0,
         liked: false,
+        privacy, // Include privacy in optimistic update
       };
 
       if (groupId && group) {
-        optimisticPost.group = {
-          id: group.id,
-          name: group.name,
-          description: group.description,
-          createdAt: group.createdAt,
-          createdBy: group.creator.id,
-          creator: group.creator,
-        };
+        optimisticPost.group = group;
       }
 
       const queries = [
@@ -173,41 +170,71 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       ? "Write something on their timeline..."
       : "What's on your mind? Use @ to mention users";
 
+  const renderPrivacyIcon = () => {
+    switch (privacy) {
+      case 'private':
+        return <Lock className="h-4 w-4" />;
+      case 'friends':
+        return <Users className="h-4 w-4" />;
+      default:
+        return <Globe className="h-4 w-4" />;
+    }
+  };
+
   return (
     <>
       <Card>
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex justify-between items-center mb-2">
-              <Select
-                value={privacy}
-                onValueChange={setPrivacy}
-                disabled={!!groupId}
-              >
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Privacy" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      <span>Public</span>
+              <div className="flex-1" /> {/* Spacer to push privacy control to the right */}
+              {!groupId && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground flex gap-2"
+                    >
+                      {renderPrivacyIcon()}
+                      <span className="text-sm">
+                        {privacy.charAt(0).toUpperCase() + privacy.slice(1)}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-40 p-0" align="end">
+                    <div className="space-y-1 p-1">
+                      <Button
+                        variant={privacy === 'public' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPrivacy('public')}
+                      >
+                        <Globe className="h-4 w-4" />
+                        <span>Public</span>
+                      </Button>
+                      <Button
+                        variant={privacy === 'friends' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPrivacy('friends')}
+                      >
+                        <Users className="h-4 w-4" />
+                        <span>Friends</span>
+                      </Button>
+                      <Button
+                        variant={privacy === 'private' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPrivacy('private')}
+                      >
+                        <Lock className="h-4 w-4" />
+                        <span>Private</span>
+                      </Button>
                     </div>
-                  </SelectItem>
-                  <SelectItem value="friends">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      <span>Friends</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="private">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-4 w-4" />
-                      <span>Private</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
 
             <LexicalEditor
