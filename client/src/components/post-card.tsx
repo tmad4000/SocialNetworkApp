@@ -95,7 +95,10 @@ export default function PostCard({ post }: PostCardProps) {
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
+        body: JSON.stringify({
+          ...updateData,
+          content: updateData.content || post.content // Always include content
+        }),
         credentials: "include",
       });
 
@@ -106,6 +109,7 @@ export default function PostCard({ post }: PostCardProps) {
       return res.json();
     },
     onMutate: async (newData) => {
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       if (post.groupId) {
         await queryClient.cancelQueries({ queryKey: [`/api/groups/${post.groupId}/posts`] });
@@ -114,8 +118,16 @@ export default function PostCard({ post }: PostCardProps) {
         await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
       }
 
-      const updatePostInCache = (posts: any[]) => {
-        return posts.map(p => {
+      // Get current query data
+      const previousData = {
+        posts: queryClient.getQueryData<any[]>(["/api/posts"]),
+        userPosts: queryClient.getQueryData<any[]>([`/api/posts/user/${post.user.id}`]),
+        groupPosts: post.groupId ? queryClient.getQueryData<any[]>([`/api/groups/${post.groupId}/posts`]) : undefined
+      };
+
+      // Optimistically update all queries with the new data
+      const updatePostInCache = (oldPosts: any[] = []) => {
+        return oldPosts.map(p => {
           if (p.id === post.id) {
             return {
               ...p,
@@ -127,34 +139,31 @@ export default function PostCard({ post }: PostCardProps) {
         });
       };
 
-      const previousData = {
-        posts: queryClient.getQueryData(["/api/posts"]),
-        userPosts: queryClient.getQueryData([`/api/posts/user/${post.user.id}`]),
-        groupPosts: post.groupId ? queryClient.getQueryData([`/api/groups/${post.groupId}/posts`]) : undefined
-      };
-
       if (previousData.posts) {
-        queryClient.setQueryData(["/api/posts"], (old: any) => updatePostInCache(old));
+        queryClient.setQueryData(["/api/posts"], updatePostInCache(previousData.posts));
       }
       if (previousData.userPosts) {
-        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], (old: any) => updatePostInCache(old));
+        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], updatePostInCache(previousData.userPosts));
       }
       if (previousData.groupPosts) {
-        queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], (old: any) => updatePostInCache(old));
+        queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], updatePostInCache(previousData.groupPosts));
       }
 
       return previousData;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setIsEditing(false);
-      const queriesToInvalidate = [
-        ["/api/posts"],
-        post.user.id ? [`/api/posts/user/${post.user.id}`] : null,
-        post.groupId ? [`/api/groups/${post.groupId}/posts`] : null
+      // Instead of invalidating, update the cache with the returned data
+      const updateQueries = [
+        { queryKey: ["/api/posts"] },
+        post.user.id ? { queryKey: [`/api/posts/user/${post.user.id}`] } : null,
+        post.groupId ? { queryKey: [`/api/groups/${post.groupId}/posts`] } : null
       ].filter(Boolean);
 
-      queriesToInvalidate.forEach(queryKey => {
-        queryClient.invalidateQueries({ queryKey });
+      updateQueries.forEach(({ queryKey }) => {
+        queryClient.setQueryData(queryKey, (oldData: any[] = []) => {
+          return oldData.map(p => p.id === post.id ? { ...p, ...data } : p);
+        });
       });
 
       toast({
@@ -163,16 +172,15 @@ export default function PostCard({ post }: PostCardProps) {
       });
     },
     onError: (error, _, context) => {
-      if (context) {
-        if (context.posts) {
-          queryClient.setQueryData(["/api/posts"], context.posts);
-        }
-        if (context.userPosts) {
-          queryClient.setQueryData([`/api/posts/user/${post.user.id}`], context.userPosts);
-        }
-        if (context.groupPosts && post.groupId) {
-          queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], context.groupPosts);
-        }
+      // Revert all optimistic updates
+      if (context?.posts) {
+        queryClient.setQueryData(["/api/posts"], context.posts);
+      }
+      if (context?.userPosts) {
+        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], context.userPosts);
+      }
+      if (context?.groupPosts && post.groupId) {
+        queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], context.groupPosts);
       }
 
       toast({
@@ -226,9 +234,9 @@ export default function PostCard({ post }: PostCardProps) {
 
   const handlePrivacyChange = (newPrivacy: string) => {
     setEditedPrivacy(newPrivacy);
-    editPost.mutate({ 
+    editPost.mutate({
       privacy: newPrivacy,
-      content: post.content 
+      content: post.content
     });
   };
 
