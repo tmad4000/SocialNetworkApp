@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Users, Pencil, Search } from "lucide-react";
+import { Loader2, Users, Pencil, Search, QrCode } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
@@ -17,6 +17,13 @@ import { Link } from "wouter";
 import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
 import PostFilter from "@/components/ui/post-filter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import QRCode from "qrcode";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done'; // inferred type
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -51,6 +58,9 @@ export default function ProfilePage() {
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
   const { user: currentUser } = useUser();
+  const [qrCodeDialogOpen, setQrCodeDialogOpen] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [showPrivateInfo, setShowPrivateInfo] = useState(false);
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: [`/api/user/${params?.id}`],
@@ -62,6 +72,15 @@ export default function ProfilePage() {
       setNewLookingFor(user.lookingFor);
     }
   }, [user?.lookingFor]);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('private_token');
+    if (token) {
+      const isValidToken = token === btoa(`${user?.id}-${user?.username}`);
+      setShowPrivateInfo(isValidToken);
+    }
+  }, [user]);
 
   const updateBio = useMutation({
     mutationFn: async (bio: string) => {
@@ -182,17 +201,14 @@ export default function ProfilePage() {
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    // First apply star filter if enabled
     let filtered = showStarredOnly
       ? posts.filter((post) => post.starred)
       : posts;
 
-    // Then apply status filter if enabled
     filtered = showStatusOnly
       ? filtered.filter((post) => selectedStatuses.includes(post.status as Status))
       : filtered;
 
-    // Finally apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((post) =>
@@ -206,7 +222,6 @@ export default function ProfilePage() {
     return filtered;
   }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly]);
 
-  // Calculate status counts
   const statusCounts = useMemo(() => {
     if (!posts) return {};
     return posts.reduce((acc: Record<Status, number>, post) => {
@@ -219,6 +234,24 @@ export default function ProfilePage() {
   const { data: friends, isLoading: friendsLoading } = useQuery<FriendWithRelations[]>({
     queryKey: ["/api/friends"],
   });
+
+  const generateQRCode = async () => {
+    if (!user) return;
+
+    try {
+      const token = btoa(`${user.id}-${user.username}`);
+      const profileUrl = `${window.location.origin}/profile/${user.id}?private_token=${token}`;
+      const qrCode = await QRCode.toDataURL(profileUrl);
+      setQrCodeUrl(qrCode);
+    } catch (error) {
+      console.error("Failed to generate QR code:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate QR code",
+      });
+    }
+  };
 
   if (userLoading || postsLoading || friendsLoading) {
     return (
@@ -285,7 +318,40 @@ export default function ProfilePage() {
           </Avatar>
 
           <div className="flex-1 space-y-4">
-            <h1 className="text-2xl font-bold">{user?.username}</h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">{user?.username}</h1>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  setQrCodeDialogOpen(true);
+                  generateQRCode();
+                }}
+              >
+                <QrCode className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {(showPrivateInfo || isOwnProfile || friendRequest?.status === "accepted") && (
+              <div className="space-y-2">
+                {user?.email && (
+                  <p className="text-sm">
+                    <span className="font-medium">Email:</span>{" "}
+                    <a href={`mailto:${user.email}`} className="text-primary hover:underline">
+                      {user.email}
+                    </a>
+                  </p>
+                )}
+                {user?.phone && (
+                  <p className="text-sm">
+                    <span className="font-medium">Phone:</span>{" "}
+                    <a href={`tel:${user.phone}`} className="text-primary hover:underline">
+                      {user.phone}
+                    </a>
+                  </p>
+                )}
+              </div>
+            )}
 
             {isEditingBio ? (
               <form onSubmit={handleSaveBio} className="space-y-2">
@@ -502,6 +568,26 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Profile via QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-4">
+            {qrCodeUrl ? (
+              <img src={qrCodeUrl} alt="Profile QR Code" className="w-64 h-64" />
+            ) : (
+              <div className="w-64 h-64 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground text-center">
+              Scan this QR code to view profile with contact information
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
