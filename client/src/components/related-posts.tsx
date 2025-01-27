@@ -29,23 +29,7 @@ interface RelatedPostsProps {
 }
 
 interface RelatedPost extends Post {
-  user: {
-    id: number;
-    username: string;
-    avatar: string | null;
-    bio: string | null;
-    linkedinUrl: string | null;
-    lookingFor: string | null;
-    phone: string | null;
-    email: string | null;
-    createdAt: Date | null;
-    password: string;
-  };
-  similarity: number;
-  likeCount: number;
-  liked: boolean;
-  starCount: number;
-  starred: boolean;
+  user: User;
   mentions: Array<{
     mentionedUser: {
       id: number;
@@ -53,6 +37,11 @@ interface RelatedPost extends Post {
       avatar: string | null;
     };
   }>;
+  similarity: number;
+  likeCount: number;
+  liked: boolean;
+  starred: boolean;
+  privacy: string;
 }
 
 export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsProps) {
@@ -67,7 +56,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     enabled: isOpen,
   });
 
-  const { data: allPosts, isLoading: postsLoading } = useQuery<Post[]>({
+  const { data: allPosts } = useQuery<Post[]>({
     queryKey: ["/api/posts"],
     enabled: isPopoverOpen,
   });
@@ -75,6 +64,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const addRelatedPost = useMutation({
     mutationFn: async (relatedPostId: number) => {
       try {
+        console.log('Adding related post:', relatedPostId); // Debug log
         const res = await fetch(`/api/posts/${postId}/related`, {
           method: "POST",
           headers: { 
@@ -85,20 +75,27 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
           credentials: "include",
         });
 
+        console.log('Response status:', res.status); // Debug log
+        const contentType = res.headers.get("content-type");
+        console.log('Content-Type:', contentType); // Debug log
+
         if (!res.ok) {
           const errorText = await res.text();
+          console.error('Error response:', errorText); // Debug log
           throw new Error(errorText);
         }
 
-        const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
+          console.error('Invalid content type:', contentType); // Debug log
           throw new Error("Invalid response format from server");
         }
 
-        return res.json();
+        const data = await res.json();
+        console.log('Response data:', data); // Debug log
+        return data;
       } catch (error: any) {
         console.error("Error adding related post:", error);
-        throw new Error(error.message);
+        throw new Error(error.message || "Failed to add related post");
       }
     },
     onSuccess: () => {
@@ -123,6 +120,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const createRelatedPost = useMutation({
     mutationFn: async (content: string) => {
       try {
+        console.log('Creating new post with content:', content); // Debug log
         const res = await fetch("/api/posts", {
           method: "POST",
           headers: { 
@@ -137,20 +135,27 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
           credentials: "include",
         });
 
+        console.log('Response status:', res.status); // Debug log
+        const contentType = res.headers.get("content-type");
+        console.log('Content-Type:', contentType); // Debug log
+
         if (!res.ok) {
           const errorText = await res.text();
+          console.error('Error response:', errorText); // Debug log
           throw new Error(errorText);
         }
 
-        const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
+          console.error('Invalid content type:', contentType); // Debug log
           throw new Error("Invalid response format from server");
         }
 
-        return res.json();
+        const data = await res.json();
+        console.log('Response data:', data); // Debug log
+        return data;
       } catch (error: any) {
         console.error("Error creating related post:", error);
-        throw new Error(error.message);
+        throw new Error(error.message || "Failed to create related post");
       }
     },
     onSuccess: (data) => {
@@ -199,19 +204,38 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
               <h3 className="text-sm font-medium mb-2">Related Posts</h3>
               <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    {searchText || "Search or create related post..."}
-                  </Button>
+                  <Input
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search or create related post..."
+                    className="w-full"
+                    onClick={() => setIsPopoverOpen(true)}
+                  />
                 </PopoverTrigger>
-                <PopoverContent className="p-0" align="start">
+                <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
                   <Command>
                     <CommandInput
                       placeholder="Type to search..."
                       value={searchText}
                       onValueChange={setSearchText}
+                      className="border-none focus:ring-0"
                     />
                     <CommandList>
-                      <CommandEmpty>No posts found.</CommandEmpty>
+                      <CommandEmpty>
+                        {searchText && (
+                          <CommandItem
+                            className="bg-primary/5 text-primary font-medium"
+                            onSelect={() => {
+                              if (searchText.trim()) {
+                                createRelatedPost.mutate(searchText);
+                              }
+                            }}
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            <span>+ Create new related post "{searchText}"</span>
+                          </CommandItem>
+                        )}
+                      </CommandEmpty>
                       <CommandGroup>
                         <ScrollArea className="h-[200px]">
                           {filteredPosts.map(post => (
@@ -226,17 +250,19 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                               </span>
                             </CommandItem>
                           ))}
-                          <CommandItem
-                            className="bg-primary/5"
-                            onSelect={() => {
-                              if (searchText.trim()) {
-                                createRelatedPost.mutate(searchText);
-                              }
-                            }}
-                          >
-                            <Plus className="mr-2 h-4 w-4" />
-                            <span>Create new related post</span>
-                          </CommandItem>
+                          {searchText && filteredPosts.length > 0 && (
+                            <CommandItem
+                              className="bg-primary/5 text-primary font-medium border-t"
+                              onSelect={() => {
+                                if (searchText.trim()) {
+                                  createRelatedPost.mutate(searchText);
+                                }
+                              }}
+                            >
+                              <Plus className="mr-2 h-4 w-4" />
+                              <span>+ Create new related post "{searchText}"</span>
+                            </CommandItem>
+                          )}
                         </ScrollArea>
                       </CommandGroup>
                     </CommandList>
