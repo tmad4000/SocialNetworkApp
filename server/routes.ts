@@ -402,7 +402,6 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -1927,18 +1926,19 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add star/unstar post endpoint
   app.post("/api/posts/:id/star", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
     try {
-      if (!req.user) {
-        return res.status(401).send("Not authenticated");
-      }
-
-      const postId = parseInt(req.params.id);
-      if (isNaN(postId)) {
-        return res.status(400).send("Invalid post ID");
-      }
-
-      // Get current post
+      // Check if post exists
       const post = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
       });
@@ -1947,15 +1947,10 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).send("Post not found");
       }
 
-      // Only allow users to star their own posts
-      if (post.userId !== req.user.id) {
-        return res.status(403).send("You can only star your own posts");
-      }
-
       // Toggle starred status
       const [updatedPost] = await db
         .update(posts)
-        .set({ starred: !post.starred })
+        .set({ starred: sql`NOT ${posts.starred}` })
         .where(eq(posts.id, postId))
         .returning();
 
