@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import LexicalEditor from "./lexical-editor";
 import RelatedPosts from "./related-posts";
 import type { Group } from "@db/schema";
+import StarButton from "@/components/ui/star-button";
 
 interface PostCardProps {
   post: Post & {
@@ -34,6 +35,8 @@ interface PostCardProps {
     mentions: (PostMention & { mentionedUser: User })[];
     likeCount: number;
     liked: boolean;
+    starCount: number;
+    starred: boolean;
     group?: Group;
   };
 }
@@ -295,6 +298,11 @@ export default function PostCard({ post }: PostCardProps) {
               postId={post.id}
               initialLiked={post.liked}
               initialLikeCount={post.likeCount}
+            />
+            <StarButton
+              postId={post.id}
+              initialStarred={post.starred}
+              initialStarCount={post.starCount}
             />
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-1.5">

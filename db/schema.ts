@@ -95,6 +95,14 @@ export const friends = pgTable("friends", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Add starredPosts table
+export const starredPosts = pgTable("starred_posts", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   posts: many(posts),
   comments: many(comments),
@@ -109,6 +117,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   }),
   createdGroups: many(groups, {relationName: 'createdGroups'}),
   groupMemberships: many(groupMembers),
+  starredPosts: many(starredPosts), // Add relation to starred posts
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -124,6 +133,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   mentions: many(postMentions),
   likes: many(postLikes),
   embedding: one(postEmbeddings),
+  stars: many(starredPosts), // Add relation to stars
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -273,3 +283,21 @@ export const insertGroupMemberSchema = createInsertSchema(groupMembers);
 export const selectGroupMemberSchema = createSelectSchema(groupMembers);
 export type GroupMember = typeof groupMembers.$inferSelect;
 export type NewGroupMember = typeof groupMembers.$inferInsert;
+
+// Add relations for starredPosts
+export const starredPostsRelations = relations(starredPosts, ({ one }) => ({
+  post: one(posts, {
+    fields: [starredPosts.postId],
+    references: [posts.id],
+  }),
+  user: one(users, {
+    fields: [starredPosts.userId],
+    references: [users.id],
+  }),
+}));
+
+// Add schemas for starredPosts
+export const insertStarredPostSchema = createInsertSchema(starredPosts);
+export const selectStarredPostSchema = createSelectSchema(starredPosts);
+export type StarredPost = typeof starredPosts.$inferSelect;
+export type NewStarredPost = typeof starredPosts.$inferInsert;

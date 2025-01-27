@@ -43,6 +43,7 @@ export default function ProfilePage() {
   const [newLookingFor, setNewLookingFor] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showStatusOnly, setShowStatusOnly] = useState(false);
+  const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
@@ -181,12 +182,17 @@ export default function ProfilePage() {
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    // First apply status filter
-    let filtered = showStatusOnly
-      ? posts.filter((post) => selectedStatuses.includes(post.status as Status))
+    // First apply star filter if enabled
+    let filtered = showStarredOnly
+      ? posts.filter((post) => post.starred)
       : posts;
 
-    // Then apply search filter if there's a search query
+    // Then apply status filter if enabled
+    filtered = showStatusOnly
+      ? filtered.filter((post) => selectedStatuses.includes(post.status as Status))
+      : filtered;
+
+    // Finally apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((post) =>
@@ -198,7 +204,7 @@ export default function ProfilePage() {
     }
 
     return filtered;
-  }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly]);
 
   // Calculate status counts
   const statusCounts = useMemo(() => {
@@ -472,6 +478,8 @@ export default function ProfilePage() {
               selectedStatuses={selectedStatuses}
               onStatusesChange={setSelectedStatuses}
               statusCounts={statusCounts}
+              showStarredOnly={showStarredOnly}
+              onStarredFilterChange={setShowStarredOnly}
             />
           </div>
         </div>

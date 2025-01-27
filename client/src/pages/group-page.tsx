@@ -24,6 +24,7 @@ export default function GroupPage() {
   const [newDescription, setNewDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showStatusOnly, setShowStatusOnly] = useState(false);
+  const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
@@ -250,6 +251,8 @@ export default function GroupPage() {
               selectedStatuses={selectedStatuses}
               onStatusesChange={setSelectedStatuses}
               statusCounts={{}}
+              showStarredOnly={showStarredOnly}
+              onStarredFilterChange={setShowStarredOnly}
             />
           </div>
         </div>

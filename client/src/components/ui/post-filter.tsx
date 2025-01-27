@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ListFilter, LayoutList, ChevronDown } from "lucide-react";
+import { ListFilter, LayoutList, ChevronDown, Star } from "lucide-react";
 import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +14,8 @@ interface PostFilterProps {
   selectedStatuses?: Status[];
   onStatusesChange?: (statuses: Status[]) => void;
   statusCounts?: Record<Status, number>;
+  showStarredOnly?: boolean;
+  onStarredFilterChange?: (showStarredOnly: boolean) => void;
 }
 
 export default function PostFilter({ 
@@ -21,7 +23,9 @@ export default function PostFilter({
   onFilterChange, 
   selectedStatuses = STATUSES,
   onStatusesChange = () => {},
-  statusCounts = {} 
+  statusCounts = {},
+  showStarredOnly = false,
+  onStarredFilterChange = () => {},
 }: PostFilterProps) {
   return (
     <div className="flex gap-2">
@@ -83,16 +87,35 @@ export default function PostFilter({
           </PopoverContent>
         </Popover>
       </div>
+
       <Button
         variant="outline"
         size="sm"
         className={`gap-2 ${
-          !showStatusOnly ? "bg-gray-200 text-black hover:bg-gray-300" : ""
+          !showStarredOnly && !showStatusOnly ? "bg-gray-200 text-black hover:bg-gray-300" : ""
         }`}
-        onClick={() => onFilterChange(false)}
+        onClick={() => {
+          onStarredFilterChange(false);
+          onFilterChange(false);
+        }}
       >
         <LayoutList className="h-4 w-4" />
         <span>All Posts</span>
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        className={`gap-2 ${
+          showStarredOnly ? "bg-gray-200 text-black hover:bg-gray-300" : ""
+        }`}
+        onClick={() => {
+          onStarredFilterChange(true);
+          onFilterChange(false);
+        }}
+      >
+        <Star className="h-4 w-4" />
+        <span>Best Ideas</span>
       </Button>
     </div>
   );
