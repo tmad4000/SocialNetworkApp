@@ -620,6 +620,80 @@ export function registerRoutes(app: Express): Server {
     res.json(user);
   });
 
+  app.get("/api/user/:id/matches", async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).send("Invalid user ID");
+    }
+
+    try {
+      // Get the user's embeddings
+      const userEmbedding = await db.query.userEmbeddings.findFirst({
+        where: eq(userEmbeddings.userId, userId),
+      });
+
+      if (!userEmbedding || (!userEmbedding.bioEmbedding && !userEmbedding.lookingForEmbedding)) {
+        return res.status(404).send("No embeddings found for user");
+      }
+
+      // Get all other users' embeddings
+      const allEmbeddings = await db.query.userEmbeddings.findMany({
+        where: not(eq(userEmbeddings.userId, userId)),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+              bio: true,
+              lookingFor: true,
+            }
+          }
+        }
+      });
+
+      const matches = allEmbeddings
+        .map(other => {
+          let totalScore = 0;
+          let scoreCount = 0;
+
+          // Calculate bio similarity if both users have bio embeddings
+          if (userEmbedding.bioEmbedding && other.bioEmbedding) {
+            totalScore += calculateCosineSimilarity(
+              userEmbedding.bioEmbedding as number[],
+              other.bioEmbedding as number[]
+            );
+            scoreCount++;
+          }
+
+          // Calculate lookingFor similarity if both users have lookingFor embeddings
+          if (userEmbedding.lookingForEmbedding && other.lookingForEmbedding) {
+            totalScore += calculateCosineSimilarity(
+              userEmbedding.lookingForEmbedding as number[],
+              other.lookingForEmbedding as number[]
+            );
+            scoreCount++;
+          }
+
+          // Calculate average similarity score
+          const averageScore = scoreCount > 0 ? totalScore / scoreCount : 0;
+
+          return {
+            user: other.user,
+            matchScore: averageScore,
+          };
+        })
+        .filter(match => match.matchScore > 0) // Only include matches with positive scores
+        .sort((a, b) => b.matchScore - a.matchScore) // Sort by score descending
+        .slice(0, 5); // Get top 5 matches
+
+      res.json(matches);
+    } catch (error) {
+      console.error('Error finding matches:', error);
+      res.status(500).send("Error finding matches");
+    }
+  });
+
   app.get("/api/users/search", async (req, res) => {
     const { query } = req.query;
     if (!query || typeof query !== "string") {
