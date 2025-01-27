@@ -26,30 +26,54 @@ export default function StarButton({
       return res.json();
     },
     onMutate: async () => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       await queryClient.cancelQueries({ queryKey: [`/api/posts/${postId}`] });
-      const previousData = queryClient.getQueryData([`/api/posts/${postId}`]);
 
-      // Optimistically update the post
+      // Snapshot the previous value
+      const previousPosts = queryClient.getQueryData(["/api/posts"]);
+
+      // Optimistically update all relevant queries
+      queryClient.setQueryData(["/api/posts"], (old: any[]) => 
+        old?.map(post => 
+          post.id === postId 
+            ? { ...post, starred: !post.starred }
+            : post
+        )
+      );
+
       queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
         ...old,
         starred: !initialStarred,
       }));
 
-      return { previousData };
+      return { previousPosts };
     },
     onError: (error, _, context) => {
-      queryClient.setQueryData([`/api/posts/${postId}`], context?.previousData);
+      // Revert optimistic update on error
+      queryClient.setQueryData(["/api/posts"], context?.previousPosts);
+      queryClient.setQueryData([`/api/posts/${postId}`], context?.previousPosts);
+
       toast({
         variant: "destructive",
         title: "Error",
         description: error.message,
       });
     },
-    onSuccess: () => {
-      // Invalidate affected queries to refetch with new data
-      queryClient.invalidateQueries({ queryKey: [`/api/posts/${postId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/user"] });
+    onSuccess: (data) => {
+      // Update queries with the actual server response
+      queryClient.setQueryData(["/api/posts"], (old: any[]) =>
+        old?.map(post =>
+          post.id === postId
+            ? { ...post, starred: data.starred }
+            : post
+        )
+      );
+
+      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
+        ...old,
+        starred: data.starred,
+      }));
     },
   });
 
