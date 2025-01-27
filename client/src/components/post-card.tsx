@@ -88,7 +88,6 @@ export default function PostCard({ post }: PostCardProps) {
 
   const editPost = useMutation({
     mutationFn: async (data: { content?: string; privacy?: string }) => {
-      // Only include defined fields in the request body
       const updateData: Record<string, string> = {};
       if (data.content !== undefined) updateData.content = data.content;
       if (data.privacy !== undefined) updateData.privacy = data.privacy;
@@ -115,7 +114,6 @@ export default function PostCard({ post }: PostCardProps) {
         await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
       }
 
-      // Update posts in cache optimistically
       const updatePostInCache = (posts: any[]) => {
         return posts.map(p => {
           if (p.id === post.id) {
@@ -135,7 +133,6 @@ export default function PostCard({ post }: PostCardProps) {
         groupPosts: post.groupId ? queryClient.getQueryData([`/api/groups/${post.groupId}/posts`]) : undefined
       };
 
-      // Update all relevant queries
       if (previousData.posts) {
         queryClient.setQueryData(["/api/posts"], (old: any) => updatePostInCache(old));
       }
@@ -150,7 +147,6 @@ export default function PostCard({ post }: PostCardProps) {
     },
     onSuccess: () => {
       setIsEditing(false);
-      // Invalidate relevant queries
       const queriesToInvalidate = [
         ["/api/posts"],
         post.user.id ? [`/api/posts/user/${post.user.id}`] : null,
@@ -167,7 +163,6 @@ export default function PostCard({ post }: PostCardProps) {
       });
     },
     onError: (error, _, context) => {
-      // Revert optimistic updates on error
       if (context) {
         if (context.posts) {
           queryClient.setQueryData(["/api/posts"], context.posts);
@@ -231,7 +226,10 @@ export default function PostCard({ post }: PostCardProps) {
 
   const handlePrivacyChange = (newPrivacy: string) => {
     setEditedPrivacy(newPrivacy);
-    editPost.mutate({ privacy: newPrivacy });
+    editPost.mutate({ 
+      privacy: newPrivacy,
+      content: post.content 
+    });
   };
 
   const renderContent = (content: string) => {
