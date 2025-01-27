@@ -8,7 +8,7 @@ import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight, QrCode } from "lucide-react";
+import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight, QrCode, Lock, Users, Globe } from "lucide-react";
 import FollowButton from "@/components/ui/follow-button";
 import {
   Collapsible,
@@ -45,6 +45,7 @@ interface PostCardProps {
     liked: boolean;
     starred: boolean;
     group?: Group;
+    privacy: string;
   };
 }
 
@@ -62,14 +63,14 @@ export default function PostCard({ post }: PostCardProps) {
     enabled: !isCommentsOpen,
   });
 
-  const { data: qrCode } = useQuery({
+  const { data: qrCode } = useQuery<{ qrCode: string }>({
     queryKey: [`/api/posts/${post.id}/qr`],
     enabled: isQrDialogOpen,
   });
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
-    staleTime: 60000, // Cache for 1 minute
+    staleTime: 60000,
   });
 
   const editPost = useMutation({
@@ -214,6 +215,17 @@ export default function PostCard({ post }: PostCardProps) {
     return JSON.stringify(mentionEditorState);
   };
 
+  const renderPrivacyIcon = () => {
+    switch (post.privacy) {
+      case 'private':
+        return <Lock className="h-4 w-4 text-muted-foreground" title="Private" />;
+      case 'friends':
+        return <Users className="h-4 w-4 text-muted-foreground" title="Friends Only" />;
+      default:
+        return <Globe className="h-4 w-4 text-muted-foreground" title="Public" />;
+    }
+  };
+
   return (
     <>
       <Card>
@@ -241,6 +253,7 @@ export default function PostCard({ post }: PostCardProps) {
                   </Link>
                 </>
               )}
+              {renderPrivacyIcon()}
             </div>
             <p className="text-sm text-muted-foreground">
               {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
