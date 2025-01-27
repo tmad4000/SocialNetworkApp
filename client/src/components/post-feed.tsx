@@ -11,6 +11,10 @@ import { useLocation } from "wouter";
 interface PostFeedProps {
   userId?: number;
   groupId?: number;
+  searchQuery?: string;
+  showStatusOnly?: boolean;
+  showStarredOnly?: boolean;
+  selectedStatuses?: Status[];
 }
 
 type PostWithDetails = Post & {
@@ -19,29 +23,22 @@ type PostWithDetails = Post & {
   group?: Group;
   likeCount: number;
   liked: boolean;
+  starred: boolean;
 };
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
-export default function PostFeed({ userId, groupId }: PostFeedProps) {
-  const [showStatusOnly, setShowStatusOnly] = useState(false);
-  const [showStarredOnly, setShowStarredOnly] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
-    STATUSES.filter(status => status !== 'none')
-  );
+export default function PostFeed({ 
+  userId, 
+  groupId,
+  searchQuery = "",
+  showStatusOnly = false,
+  showStarredOnly = false,
+  selectedStatuses = STATUSES.filter(status => status !== 'none')
+}: PostFeedProps) {
   const [location] = useLocation();
 
-  // Sync URL parameters with state
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const starred = params.get('starred') === 'true';
-    const status = params.get('status') === 'true';
-    setShowStarredOnly(starred);
-    setShowStatusOnly(status);
-  }, [location]);
-
-  const { data: posts, isLoading, isFetching } = useQuery<PostWithDetails[]>({
+  const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
     staleTime: 5000, // Consider data fresh for 5 seconds
   });
@@ -87,30 +84,35 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
     }, {} as Record<Status, number>);
   }, [posts]);
 
+  // Only show filter bar if not being controlled by parent
+  const showFilterBar = searchQuery === "" && !showStatusOnly && !showStarredOnly;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search posts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+      {showFilterBar && (
+        <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <PostFilter 
+            showStatusOnly={showStatusOnly} 
+            onFilterChange={setShowStatusOnly}
+            selectedStatuses={selectedStatuses}
+            onStatusesChange={setSelectedStatuses}
+            statusCounts={statusCounts}
+            showStarredOnly={showStarredOnly}
+            onStarredFilterChange={setShowStarredOnly}
           />
         </div>
-        <PostFilter 
-          showStatusOnly={showStatusOnly} 
-          onFilterChange={setShowStatusOnly}
-          selectedStatuses={selectedStatuses}
-          onStatusesChange={setSelectedStatuses}
-          statusCounts={statusCounts}
-          showStarredOnly={showStarredOnly}
-          onStarredFilterChange={setShowStarredOnly}
-        />
-      </div>
+      )}
 
-      {isLoading || isFetching ? (
+      {isLoading && !posts ? (
         <div className="text-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
         </div>
