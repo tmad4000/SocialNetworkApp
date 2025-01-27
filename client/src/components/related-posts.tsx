@@ -19,7 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import type { Post, User } from "@db/schema";
+import type { Post, User, PostMention, Group } from "@db/schema";
 import PostCard from "./post-card";
 
 interface RelatedPostsProps {
@@ -30,13 +30,7 @@ interface RelatedPostsProps {
 
 interface RelatedPost extends Post {
   user: User;
-  mentions: Array<{
-    mentionedUser: {
-      id: number;
-      username: string;
-      avatar: string | null;
-    };
-  }>;
+  mentions: Array<PostMention & { mentionedUser: User }>;
   similarity: number;
   likeCount: number;
   liked: boolean;
@@ -59,7 +53,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
   const { data: allPosts } = useQuery<Post[]>({
     queryKey: ["/api/posts"],
-    enabled: isPopoverOpen,
+    enabled: isOpen,
   });
 
   const addRelatedPost = useMutation({
@@ -143,48 +137,35 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                 {/* Manual Related Posts Section */}
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium text-muted-foreground">Related Posts</h4>
-                  <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Input
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
-                        placeholder="Search or create related post..."
-                        className="w-full"
-                        onClick={() => setIsPopoverOpen(true)}
-                      />
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
-                      <Command>
-                        <CommandInput
-                          placeholder="Type to search..."
-                          value={searchText}
-                          onValueChange={setSearchText}
-                          className="border-none focus:ring-0"
-                        />
-                        <CommandList>
-                          <CommandEmpty>
-                            No posts found
-                          </CommandEmpty>
-                          <CommandGroup>
-                            <ScrollArea className="h-[200px]">
-                              {filteredPosts.map(post => (
-                                <CommandItem
-                                  key={post.id}
-                                  onSelect={() => {
-                                    addRelatedPost.mutate(post.id);
-                                  }}
-                                >
-                                  <span className="truncate">
-                                    {post.content.substring(0, 50)}...
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </ScrollArea>
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <Command className="border rounded-md">
+                    <CommandInput
+                      placeholder="Search for a post..."
+                      value={searchText}
+                      onValueChange={setSearchText}
+                      className="border-none focus:ring-0"
+                    />
+                    {searchText && (
+                      <CommandList>
+                        <CommandEmpty>No posts found</CommandEmpty>
+                        <CommandGroup>
+                          <ScrollArea className="h-[200px]">
+                            {filteredPosts.map(post => (
+                              <CommandItem
+                                key={post.id}
+                                onSelect={() => {
+                                  addRelatedPost.mutate(post.id);
+                                }}
+                              >
+                                <span className="truncate">
+                                  {post.content.substring(0, 50)}...
+                                </span>
+                              </CommandItem>
+                            ))}
+                          </ScrollArea>
+                        </CommandGroup>
+                      </CommandList>
+                    )}
+                  </Command>
 
                   <div className="flex flex-wrap gap-2">
                     {selectedPosts.map(post => (
