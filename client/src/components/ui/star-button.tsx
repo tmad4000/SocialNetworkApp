@@ -6,13 +6,11 @@ import { useToast } from "@/hooks/use-toast";
 interface StarButtonProps {
   postId: number;
   initialStarred: boolean;
-  initialStarCount: number;
 }
 
 export default function StarButton({
   postId,
   initialStarred,
-  initialStarCount,
 }: StarButtonProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -34,7 +32,6 @@ export default function StarButton({
       queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
         ...old,
         starred: !initialStarred,
-        starCount: initialStarred ? initialStarCount - 1 : initialStarCount + 1,
       }));
 
       return { previousData };
@@ -66,7 +63,7 @@ export default function StarButton({
           initialStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
         }`}
       />
-      <span className="text-muted-foreground">{initialStarCount}</span>
+      <span className="sr-only">{initialStarred ? 'Remove from best ideas' : 'Mark as best idea'}</span>
     </Button>
   );
 }
