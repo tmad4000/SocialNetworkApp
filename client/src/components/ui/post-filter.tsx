@@ -4,7 +4,8 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { Status } from "@/components/ui/status-pill";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
+import { useEffect } from "react";
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
@@ -27,7 +28,31 @@ export default function PostFilter({
   showStarredOnly = false,
   onStarredFilterChange = () => {},
 }: PostFilterProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+
+  // Parse and sync URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const starred = params.get('starred') === 'true';
+    const status = params.get('status') === 'true';
+
+    if (starred !== showStarredOnly) {
+      onStarredFilterChange(starred);
+    }
+    if (status !== showStatusOnly) {
+      onFilterChange(status);
+    }
+  }, [location]);
+
+  // Update URL parameters when filters change
+  const updateURLParams = (starred: boolean, status: boolean) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('starred', starred.toString());
+    params.set('status', status.toString());
+    setLocation(`${window.location.pathname}?${params.toString()}`, {
+      replace: true
+    });
+  };
 
   return (
     <div className="flex gap-2">
@@ -38,7 +63,11 @@ export default function PostFilter({
           className={`${
             showStatusOnly ? "bg-gray-200 text-black hover:bg-gray-300" : ""
           } gap-2 rounded-r-none border-r-0`}
-          onClick={() => onFilterChange(true)}
+          onClick={() => {
+            const newStatus = !showStatusOnly;
+            onFilterChange(newStatus);
+            updateURLParams(showStarredOnly, newStatus);
+          }}
         >
           <ListFilter className="h-4 w-4" />
           <span>With Status</span>
@@ -99,7 +128,7 @@ export default function PostFilter({
         onClick={() => {
           onStarredFilterChange(false);
           onFilterChange(false);
-          setLocation("/");
+          updateURLParams(false, false);
         }}
       >
         <LayoutList className="h-4 w-4" />
@@ -115,7 +144,7 @@ export default function PostFilter({
         onClick={() => {
           onStarredFilterChange(true);
           onFilterChange(false);
-          setLocation("/best-ideas");
+          updateURLParams(true, false);
         }}
       >
         <Star className="h-4 w-4" />
