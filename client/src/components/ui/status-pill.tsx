@@ -58,10 +58,7 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
         credentials: "include",
       });
 
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-
+      if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onMutate: async (newStatus) => {
@@ -93,12 +90,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       });
 
       // Optimistically update all matching queries
-      const updatePost = (post: any) => {
-        if (post.id === postId) {
-          return { ...post, status: newStatus };
-        }
-        return post;
-      };
+      const updatePost = (post: any) =>
+        post?.id === postId ? { ...post, status: newStatus } : post;
 
       queryClient.getQueriesData({ 
         predicate: (query) => {
@@ -141,7 +134,7 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       onClick={() => !updateStatus.isPending && updateStatus.mutate(config.next)}
       disabled={updateStatus.isPending}
     >
-      <Icon className={`h-4 w-4 ${status === 'in progress' ? "animate-spin" : ""}`} />
+      <Icon className={`h-4 w-4 ${updateStatus.isPending ? "animate-spin" : ""}`} />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );
