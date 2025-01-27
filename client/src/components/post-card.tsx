@@ -98,14 +98,14 @@ export default function PostCard({ post }: PostCardProps) {
     },
     onMutate: async (newData) => {
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
+      if (post.groupId) {
+        await queryClient.cancelQueries({ queryKey: [`/api/groups/${post.groupId}/posts`] });
+      }
       if (post.user.id) {
         await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
       }
 
-      const previousPosts = queryClient.getQueryData(["/api/posts"]);
-      const previousUserPosts = queryClient.getQueryData([`/api/posts/user/${post.user.id}`]);
-
-      // Update the post in the cache
+      // Update posts in cache optimistically
       const updatePostInCache = (posts: any[]) => {
         return posts.map(p => {
           if (p.id === post.id) {
@@ -119,33 +119,57 @@ export default function PostCard({ post }: PostCardProps) {
         });
       };
 
-      if (previousPosts) {
-        queryClient.setQueryData(["/api/posts"], updatePostInCache(previousPosts));
+      const previousData = {
+        posts: queryClient.getQueryData(["/api/posts"]),
+        userPosts: queryClient.getQueryData([`/api/posts/user/${post.user.id}`]),
+        groupPosts: post.groupId ? queryClient.getQueryData([`/api/groups/${post.groupId}/posts`]) : undefined
+      };
+
+      // Update all relevant queries
+      if (previousData.posts) {
+        queryClient.setQueryData(["/api/posts"], (old: any) => updatePostInCache(old));
       }
-      if (previousUserPosts) {
-        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], updatePostInCache(previousUserPosts));
+      if (previousData.userPosts) {
+        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], (old: any) => updatePostInCache(old));
+      }
+      if (previousData.groupPosts) {
+        queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], (old: any) => updatePostInCache(old));
       }
 
-      return { previousPosts, previousUserPosts };
+      return previousData;
     },
     onSuccess: () => {
       setIsEditing(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      if (post.user.id) {
-        queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
-      }
+      // Invalidate relevant queries
+      const queriesToInvalidate = [
+        ["/api/posts"],
+        post.user.id ? [`/api/posts/user/${post.user.id}`] : null,
+        post.groupId ? [`/api/groups/${post.groupId}/posts`] : null
+      ].filter(Boolean);
+
+      queriesToInvalidate.forEach(queryKey => {
+        queryClient.invalidateQueries({ queryKey });
+      });
+
       toast({
         title: "Success",
         description: "Post updated successfully",
       });
     },
     onError: (error, _, context) => {
+      // Revert optimistic updates on error
       if (context) {
-        queryClient.setQueryData(["/api/posts"], context.previousPosts);
-        if (post.user.id) {
-          queryClient.setQueryData([`/api/posts/user/${post.user.id}`], context.previousUserPosts);
+        if (context.posts) {
+          queryClient.setQueryData(["/api/posts"], context.posts);
+        }
+        if (context.userPosts) {
+          queryClient.setQueryData([`/api/posts/user/${post.user.id}`], context.userPosts);
+        }
+        if (context.groupPosts && post.groupId) {
+          queryClient.setQueryData([`/api/groups/${post.groupId}/posts`], context.groupPosts);
         }
       }
+
       toast({
         variant: "destructive",
         title: "Error",
@@ -171,6 +195,9 @@ export default function PostCard({ post }: PostCardProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (post.user.id) {
         queryClient.invalidateQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
+      }
+      if (post.groupId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/groups/${post.groupId}/posts`] });
       }
       toast({
         title: "Success",
@@ -344,35 +371,39 @@ export default function PostCard({ post }: PostCardProps) {
         <CardContent>
           {isEditing ? (
             <form onSubmit={handleSaveEdit} className="space-y-4">
-              <Select
-                value={editedPrivacy}
-                onValueChange={setEditedPrivacy}
-                disabled={!!post.groupId}
-              >
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Privacy" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      <span>Public</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="friends">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      <span>Friends</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="private">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-4 w-4" />
-                      <span>Private</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex justify-between items-center">
+                <div className="flex-1">
+                  <Select
+                    value={editedPrivacy}
+                    onValueChange={setEditedPrivacy}
+                    disabled={!!post.groupId}
+                  >
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="Privacy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="public">
+                        <div className="flex items-center gap-2">
+                          <Globe className="h-4 w-4" />
+                          <span>Public</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="friends">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          <span>Friends</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="private">
+                        <div className="flex items-center gap-2">
+                          <Lock className="h-4 w-4" />
+                          <span>Private</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <LexicalEditor
                 onChange={setEditedContent}
                 users={users || []}
@@ -382,17 +413,17 @@ export default function PostCard({ post }: PostCardProps) {
               />
               <div className="flex justify-end gap-2">
                 <Button
-                  type="submit"
-                  disabled={!editedContent.trim() || editPost.isPending}
-                >
-                  Save
-                </Button>
-                <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsEditing(false)}
                 >
                   Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!editedContent.trim() || editPost.isPending}
+                >
+                  Save
                 </Button>
               </div>
             </form>
