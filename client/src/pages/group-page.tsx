@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Users, Pencil, QrCode, Search } from "lucide-react";
+import { Loader2, Users, Pencil, QrCode } from "lucide-react";
 import { Link } from "wouter";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import type { Group, User, Post } from "@db/schema";
 import QRCode from "qrcode";
-import { Input } from "@/components/ui/input";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -28,7 +27,6 @@ const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in prog
 export default function GroupPage() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [showStatusOnly, setShowStatusOnly] = useState(false);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
@@ -152,10 +150,6 @@ export default function GroupPage() {
     updateDescription.mutate(newDescription);
   };
 
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-  };
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       <Card className="mb-8">
@@ -274,18 +268,7 @@ export default function GroupPage() {
 
       <div className="space-y-6">
         <Separator className="my-8" />
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search posts..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
+        <h2 className="text-2xl font-semibold">Posts</h2>
         {group?.isMember && (
           <CreatePost
             groupId={group.id}
@@ -298,11 +281,9 @@ export default function GroupPage() {
 
         <PostFeed 
           groupId={group?.id} 
-          searchQuery={searchQuery}
           showStatusOnly={showStatusOnly}
           selectedStatuses={selectedStatuses}
           showStarredOnly={showStarredOnly}
-          onSearchChange={handleSearchChange}
           onStatusOnlyChange={setShowStatusOnly}
           onStarredOnlyChange={setShowStarredOnly}
           onStatusesChange={setSelectedStatuses}
