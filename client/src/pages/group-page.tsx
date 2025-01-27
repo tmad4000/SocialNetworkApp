@@ -6,12 +6,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Users, Pencil, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Loader2, Users, Pencil } from "lucide-react";
 import { Link } from "wouter";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
-import PostFilter from "@/components/ui/post-filter";
 import PostFeed from "@/components/post-feed";
 import { useToast } from "@/hooks/use-toast";
 import type { Group, User, Post } from "@db/schema";
@@ -233,30 +231,7 @@ export default function GroupPage() {
 
       <div className="space-y-6">
         <Separator className="my-8" />
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="flex items-center gap-4">
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search posts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <PostFilter
-              showStatusOnly={showStatusOnly}
-              onFilterChange={setShowStatusOnly}
-              selectedStatuses={selectedStatuses}
-              onStatusesChange={setSelectedStatuses}
-              statusCounts={{}}
-              showStarredOnly={showStarredOnly}
-              onStarredFilterChange={setShowStarredOnly}
-            />
-          </div>
-        </div>
-
+        <h2 className="text-2xl font-semibold">Posts</h2>
         {group.isMember && (
           <CreatePost
             groupId={group.id}
@@ -267,7 +242,7 @@ export default function GroupPage() {
           />
         )}
 
-        <PostFeed groupId={group.id} />
+        <PostFeed groupId={group.id} searchQuery={searchQuery} showStatusOnly={showStatusOnly} selectedStatuses={selectedStatuses} showStarredOnly={showStarredOnly}/>
       </div>
     </div>
   );

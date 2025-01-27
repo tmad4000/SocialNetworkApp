@@ -41,8 +41,9 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
     setShowStatusOnly(status);
   }, [location]);
 
-  const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
+  const { data: posts, isLoading, isFetching } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
+    staleTime: 5000, // Consider data fresh for 5 seconds
   });
 
   const filteredPosts = useMemo(() => {
@@ -109,7 +110,7 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
         />
       </div>
 
-      {isLoading ? (
+      {isLoading || isFetching ? (
         <div className="text-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
         </div>
