@@ -1,18 +1,25 @@
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Users, Pencil } from "lucide-react";
+import { Loader2, Users, Pencil, QrCode } from "lucide-react";
 import { Link } from "wouter";
 import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
 import PostFeed from "@/components/post-feed";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { Group, User, Post } from "@db/schema";
+import QRCode from "qrcode";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -26,10 +33,13 @@ export default function GroupPage() {
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
+  const [qrCodeDialogOpen, setQrCodeDialogOpen] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/groups/:id");
+  const [location] = useLocation();
 
   const { data: group, isLoading: groupLoading } = useQuery<Group & {
     creator: User;
@@ -106,6 +116,21 @@ export default function GroupPage() {
     },
   });
 
+  const generateQRCode = async () => {
+    try {
+      const groupUrl = `${window.location.origin}/groups/${params?.id}`;
+      const qrCode = await QRCode.toDataURL(groupUrl);
+      setQrCodeUrl(qrCode);
+    } catch (error) {
+      console.error("Failed to generate QR code:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate QR code",
+      });
+    }
+  };
+
   if (groupLoading || membersLoading) {
     return (
       <div className="flex justify-center p-8">
@@ -146,18 +171,30 @@ export default function GroupPage() {
                   </Link>
                 </div>
               </div>
-              <Button
-                onClick={() => toggleMembership.mutate()}
-                variant={group.isMember ? "outline" : "default"}
-              >
-                {toggleMembership.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : group.isMember ? (
-                  "Leave Group"
-                ) : (
-                  "Join Group"
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    setQrCodeDialogOpen(true);
+                    generateQRCode();
+                  }}
+                >
+                  <QrCode className="h-4 w-4" />
+                </Button>
+                <Button
+                  onClick={() => toggleMembership.mutate()}
+                  variant={group.isMember ? "outline" : "default"}
+                >
+                  {toggleMembership.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : group.isMember ? (
+                    "Leave Group"
+                  ) : (
+                    "Join Group"
+                  )}
+                </Button>
+              </div>
             </div>
 
             {isEditingDescription ? (
@@ -244,6 +281,26 @@ export default function GroupPage() {
 
         <PostFeed groupId={group.id} searchQuery={searchQuery} showStatusOnly={showStatusOnly} selectedStatuses={selectedStatuses} showStarredOnly={showStarredOnly}/>
       </div>
+
+      <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Group via QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-4">
+            {qrCodeUrl ? (
+              <img src={qrCodeUrl} alt="Group QR Code" className="w-64 h-64" />
+            ) : (
+              <div className="w-64 h-64 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground text-center">
+              Scan this QR code to join the group
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
