@@ -11,6 +11,7 @@ import MatchesPage from "@/pages/matches-page";
 import GroupsPage from "@/pages/groups-page";
 import GroupPage from "@/pages/group-page";
 import PostPage from "@/pages/post-page";
+import BestIdeasPage from "@/pages/best-ideas-page";
 import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import Navbar from "@/components/navbar";
@@ -46,6 +47,7 @@ function Router() {
           <Route path="/groups/:id" component={GroupPage} />
           <Route path="/matches" component={MatchesPage} />
           <Route path="/post/:id" component={PostPage} />
+          <Route path="/best-ideas" component={BestIdeasPage} />
           <Route component={NotFound} />
         </Switch>
       </main>

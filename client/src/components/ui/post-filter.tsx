@@ -1,10 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { ListFilter, LayoutList, ChevronDown, Star } from "lucide-react";
-import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { Status } from "@/components/ui/status-pill";
+import { useLocation } from "wouter";
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
@@ -23,10 +23,12 @@ export default function PostFilter({
   onFilterChange, 
   selectedStatuses = STATUSES,
   onStatusesChange = () => {},
-  statusCounts = {},
+  statusCounts = {} as Record<Status, number>,
   showStarredOnly = false,
   onStarredFilterChange = () => {},
 }: PostFilterProps) {
+  const [, setLocation] = useLocation();
+
   return (
     <div className="flex gap-2">
       <div className="flex">
@@ -97,6 +99,7 @@ export default function PostFilter({
         onClick={() => {
           onStarredFilterChange(false);
           onFilterChange(false);
+          setLocation("/");
         }}
       >
         <LayoutList className="h-4 w-4" />
@@ -112,6 +115,7 @@ export default function PostFilter({
         onClick={() => {
           onStarredFilterChange(true);
           onFilterChange(false);
+          setLocation("/best-ideas");
         }}
       >
         <Star className="h-4 w-4" />
