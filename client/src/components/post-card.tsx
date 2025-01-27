@@ -88,10 +88,15 @@ export default function PostCard({ post }: PostCardProps) {
 
   const editPost = useMutation({
     mutationFn: async (data: { content?: string; privacy?: string }) => {
+      // Only include defined fields in the request body
+      const updateData: Record<string, string> = {};
+      if (data.content !== undefined) updateData.content = data.content;
+      if (data.privacy !== undefined) updateData.privacy = data.privacy;
+
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(updateData),
         credentials: "include",
       });
 
@@ -225,7 +230,7 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   const handlePrivacyChange = (privacy: string) => {
-    editPost.mutate({ privacy });
+    editPost.mutate({ privacy }); // Only send privacy update
   };
 
   const renderContent = (content: string) => {
@@ -314,8 +319,8 @@ export default function PostCard({ post }: PostCardProps) {
       return (
         <Popover>
           <PopoverTrigger asChild>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               className={`p-0 h-4 hover:bg-transparent ${editPost.isPending ? 'opacity-50' : ''}`}
               disabled={editPost.isPending}
