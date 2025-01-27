@@ -18,7 +18,7 @@ export default function StarButton({
   const toggleStar = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/posts/${postId}/star`, {
-        method: initialStarred ? "DELETE" : "POST",
+        method: "POST",
         credentials: "include",
       });
 

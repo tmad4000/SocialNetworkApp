@@ -1927,5 +1927,39 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.post("/api/posts/:id/star", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      // Get current post
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      // Toggle starred status
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ starred: !post.starred })
+        .where(eq(posts.id, postId))
+        .returning();
+
+      res.json({ starred: updatedPost.starred });
+    } catch (error) {
+      console.error('Error toggling star status:', error);
+      res.status(500).send("Error toggling star status");
+    }
+  });
+
   return httpServer;
 }
