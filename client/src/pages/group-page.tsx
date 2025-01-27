@@ -136,6 +136,8 @@ export default function GroupPage() {
             matchReason = "Good potential for connection";
           } else if (score > 0.1) {
             matchReason = "Some mutual interests";
+          } else {
+            matchReason = "Low semantic match";
           }
 
           if (Math.abs(directSimilarity - reverseSimilarity) > 0.2) {
@@ -145,17 +147,15 @@ export default function GroupPage() {
           }
         }
 
-        if (!matchReason || score < 0.1) {
-          const basicMatch = calculateBasicMatchScore(user1, user2);
-          if (basicMatch.score > score) {
-            score = basicMatch.score;
-            matchReason = basicMatch.reasons.join(". ");
-          }
+        // Always calculate basic match score
+        const basicMatch = calculateBasicMatchScore(user1, user2);
+        if (!matchReason || basicMatch.score > score) {
+          score = basicMatch.score;
+          matchReason = basicMatch.reasons.join(". ");
         }
 
-        if (score > 0.1) {
-          matches.push({ user1, user2, score, matchReason, hasEmbeddings });
-        }
+        // Add match regardless of score
+        matches.push({ user1, user2, score, matchReason, hasEmbeddings });
       }
     }
 
