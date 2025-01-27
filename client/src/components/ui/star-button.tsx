@@ -29,6 +29,7 @@ export default function StarButton({
       await queryClient.cancelQueries({ queryKey: [`/api/posts/${postId}`] });
       const previousData = queryClient.getQueryData([`/api/posts/${postId}`]);
 
+      // Optimistically update the post
       queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
         ...old,
         starred: !initialStarred,
@@ -44,9 +45,11 @@ export default function StarButton({
         description: error.message,
       });
     },
-    onSettled: () => {
+    onSuccess: () => {
+      // Invalidate affected queries to refetch with new data
       queryClient.invalidateQueries({ queryKey: [`/api/posts/${postId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/user"] });
     },
   });
 

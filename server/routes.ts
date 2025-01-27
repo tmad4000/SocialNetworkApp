@@ -1938,14 +1938,19 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
+      console.log(`Attempting to toggle star for post ${postId}`);
+
       // Get current post
       const post = await db.query.posts.findFirst({
         where: eq(posts.id, postId),
       });
 
       if (!post) {
+        console.log(`Post ${postId} not found`);
         return res.status(404).send("Post not found");
       }
+
+      console.log(`Current star status: ${post.starred}, toggling to: ${!post.starred}`);
 
       // Toggle starred status
       const [updatedPost] = await db
@@ -1953,6 +1958,8 @@ export function registerRoutes(app: Express): Server {
         .set({ starred: !post.starred })
         .where(eq(posts.id, postId))
         .returning();
+
+      console.log(`Successfully updated post ${postId}, new star status: ${updatedPost.starred}`);
 
       res.json({ starred: updatedPost.starred });
     } catch (error) {
