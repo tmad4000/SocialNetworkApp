@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +42,16 @@ export default function GroupPage() {
   const queryClient = useQueryClient();
   const [, params] = useRoute("/groups/:id");
   const [location] = useLocation();
+
+  // Reset search when navigating away
+  useEffect(() => {
+    return () => {
+      setSearchQuery("");
+      setShowStatusOnly(false);
+      setShowStarredOnly(false);
+      setSelectedStatuses(STATUSES.filter(status => status !== 'none'));
+    };
+  }, [location]);
 
   const { data: group, isLoading: groupLoading } = useQuery<Group & {
     creator: User;
