@@ -11,6 +11,13 @@ import { Button } from "@/components/ui/button";
 import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight, QrCode, Lock, Users, Globe } from "lucide-react";
 import FollowButton from "@/components/ui/follow-button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -54,6 +61,7 @@ export default function PostCard({ post }: PostCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
+  const [editedPrivacy, setEditedPrivacy] = useState(post.privacy);
   const { user: currentUser } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -74,11 +82,11 @@ export default function PostCard({ post }: PostCardProps) {
   });
 
   const editPost = useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async (data: { content: string; privacy: string }) => {
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(data),
         credentials: "include",
       });
 
@@ -143,7 +151,7 @@ export default function PostCard({ post }: PostCardProps) {
   const handleSaveEdit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!editedContent.trim()) return;
-    editPost.mutate(editedContent);
+    editPost.mutate({ content: editedContent, privacy: editedPrivacy });
   };
 
   const renderContent = (content: string) => {
@@ -218,11 +226,11 @@ export default function PostCard({ post }: PostCardProps) {
   const renderPrivacyIcon = () => {
     switch (post.privacy) {
       case 'private':
-        return <Lock className="h-4 w-4 text-muted-foreground" title="Private" />;
+        return <Lock className="h-4 w-4 text-muted-foreground" aria-label="Private post" />;
       case 'friends':
-        return <Users className="h-4 w-4 text-muted-foreground" title="Friends Only" />;
+        return <Users className="h-4 w-4 text-muted-foreground" aria-label="Friends only post" />;
       default:
-        return <Globe className="h-4 w-4 text-muted-foreground" title="Public" />;
+        return <Globe className="h-4 w-4 text-muted-foreground" aria-label="Public post" />;
     }
   };
 
@@ -298,6 +306,35 @@ export default function PostCard({ post }: PostCardProps) {
         <CardContent>
           {isEditing ? (
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              <Select
+                value={editedPrivacy}
+                onValueChange={setEditedPrivacy}
+                disabled={!!post.groupId}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Privacy" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      <span>Public</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="friends">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      <span>Friends</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="private">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      <span>Private</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <LexicalEditor
                 onChange={setEditedContent}
                 users={users || []}
