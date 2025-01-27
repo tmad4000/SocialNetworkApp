@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import type { Post, User, PostMention, Group } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
+import { useLocation } from "wouter";
 
 interface PostFeedProps {
   userId?: number;
@@ -24,10 +25,21 @@ const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in prog
 
 export default function PostFeed({ userId, groupId }: PostFeedProps) {
   const [showStatusOnly, setShowStatusOnly] = useState(false);
+  const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
+  const [location] = useLocation();
+
+  // Sync URL parameters with state
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const starred = params.get('starred') === 'true';
+    const status = params.get('status') === 'true';
+    setShowStarredOnly(starred);
+    setShowStatusOnly(status);
+  }, [location]);
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
@@ -41,8 +53,12 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
       new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
     );
 
+    // Apply starred filter if enabled
+    if (showStarredOnly) {
+      sorted = sorted.filter(post => post.starred);
+    }
     // Then apply status filter if enabled
-    if (showStatusOnly && selectedStatuses.length > 0) {
+    else if (showStatusOnly && selectedStatuses.length > 0) {
       sorted = sorted.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
@@ -58,11 +74,11 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
     }
 
     return sorted;
-  }, [posts, searchQuery, showStatusOnly, selectedStatuses]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly]);
 
   // Calculate status counts from all posts
   const statusCounts = useMemo(() => {
-    if (!posts) return {};
+    if (!posts) return {} as Record<Status, number>;
     return posts.reduce((acc: Record<Status, number>, post) => {
       const status = post.status as Status;
       acc[status] = (acc[status] || 0) + 1;
@@ -88,6 +104,8 @@ export default function PostFeed({ userId, groupId }: PostFeedProps) {
           selectedStatuses={selectedStatuses}
           onStatusesChange={setSelectedStatuses}
           statusCounts={statusCounts}
+          showStarredOnly={showStarredOnly}
+          onStarredFilterChange={setShowStarredOnly}
         />
       </div>
 
