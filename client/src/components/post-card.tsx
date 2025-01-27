@@ -26,8 +26,7 @@ import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import LexicalEditor from "./lexical-editor";
 import RelatedPosts from "./related-posts";
-import type { Group } from "@db/schema"; // Added import for Group type
-
+import type { Group } from "@db/schema";
 
 interface PostCardProps {
   post: Post & {
@@ -35,7 +34,7 @@ interface PostCardProps {
     mentions: (PostMention & { mentionedUser: User })[];
     likeCount: number;
     liked: boolean;
-    group?: Group; // Add group to the post type
+    group?: Group;
   };
 }
 
