@@ -108,15 +108,6 @@ export const friends = pgTable("friends", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Add related posts table
-export const relatedPosts = pgTable("related_posts", {
-  id: serial("id").primaryKey(),
-  sourcePostId: integer("source_post_id").references(() => posts.id).notNull(),
-  relatedPostId: integer("related_post_id").references(() => posts.id).notNull(),
-  similarity: jsonb("similarity").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
 export const usersRelations = relations(users, ({ many, one }) => ({
   posts: many(posts),
   comments: many(comments),
@@ -133,7 +124,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   groupMemberships: many(groupMembers),
 }));
 
-// Update postsRelations to include related posts
+// Update postsRelations to include followers
 export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, {
     fields: [posts.userId],
@@ -148,8 +139,6 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   likes: many(postLikes),
   embedding: one(postEmbeddings),
   followers: many(postFollowers),
-  relatedTo: many(relatedPosts, { relationName: "relatedTo" }),
-  relatedFrom: many(relatedPosts, { relationName: "relatedFrom" }),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -257,20 +246,6 @@ export const postFollowersRelations = relations(postFollowers, ({ one }) => ({
   }),
 }));
 
-export const relatedPostsRelations = relations(relatedPosts, ({ one }) => ({
-  sourcePost: one(posts, {
-    fields: [relatedPosts.sourcePostId],
-    references: [posts.id],
-    relationName: "relatedFrom",
-  }),
-  relatedPost: one(posts, {
-    fields: [relatedPosts.relatedPostId],
-    references: [posts.id],
-    relationName: "relatedTo",
-  }),
-}));
-
-
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -331,9 +306,3 @@ export const insertPostFollowerSchema = createInsertSchema(postFollowers);
 export const selectPostFollowerSchema = createSelectSchema(postFollowers);
 export type PostFollower = typeof postFollowers.$inferSelect;
 export type NewPostFollower = typeof postFollowers.$inferInsert;
-
-// Add schemas for related posts
-export const insertRelatedPostSchema = createInsertSchema(relatedPosts);
-export const selectRelatedPostSchema = createSelectSchema(relatedPosts);
-export type RelatedPost = typeof relatedPosts.$inferSelect;
-export type NewRelatedPost = typeof relatedPosts.$inferInsert;

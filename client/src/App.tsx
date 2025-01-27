@@ -46,7 +46,7 @@ function Router() {
           <Route path="/groups/:id" component={GroupPage} />
           <Route path="/matches" component={MatchesPage} />
           <Route path="/post/:id" component={PostPage} />
-          <Route path="/:rest*" component={NotFound} />
+          <Route component={NotFound} />
         </Switch>
       </main>
     </div>
