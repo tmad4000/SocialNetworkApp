@@ -13,6 +13,8 @@ type RegisterFormData = NewUser & {
   bio?: string;
   lookingFor?: string;
   ideas?: string;
+  phone?: string;
+  email?: string;
 };
 
 type PostsToCreate = {
@@ -38,6 +40,8 @@ export default function AuthPage() {
       bio: "",
       lookingFor: "",
       ideas: "",
+      phone: "",
+      email: "",
     },
   });
 
@@ -137,7 +141,7 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px]">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Social Network</CardTitle>
+          <CardTitle className="text-2xl text-center">Idea Network</CardTitle>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login">
@@ -181,6 +185,16 @@ export default function AuthPage() {
                   type="password"
                   placeholder="Password"
                   {...registerForm.register("password", { required: true })}
+                />
+                <Input
+                  type="email"
+                  placeholder="Email (optional)"
+                  {...registerForm.register("email")}
+                />
+                <Input
+                  type="tel"
+                  placeholder="Phone (optional)"
+                  {...registerForm.register("phone")}
                 />
                 <Textarea
                   placeholder="Tell us about yourself (optional)"
