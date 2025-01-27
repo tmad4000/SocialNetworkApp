@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import type { Group, User, Post } from "@db/schema";
 import QRCode from "qrcode";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -152,26 +154,26 @@ export default function GroupPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto px-4 py-6">
       <Card className="mb-8">
-        <CardContent className="flex items-start gap-6 p-6">
-          <Avatar className="h-24 w-24 flex-shrink-0">
-            <AvatarImage src={`https://api.dicebear.com/7.x/shapes/svg?seed=${group.name}`} />
-            <AvatarFallback>{group.name[0]}</AvatarFallback>
+        <CardContent className="flex flex-col md:flex-row items-start gap-6 p-6">
+          <Avatar className="h-24 w-24 flex-shrink-0 mx-auto md:mx-0">
+            <AvatarImage src={`https://api.dicebear.com/7.x/shapes/svg?seed=${group?.name}`} />
+            <AvatarFallback>{group?.name?.[0]}</AvatarFallback>
           </Avatar>
 
-          <div className="flex-1 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="flex-1 space-y-4 w-full">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold">{group.name}</h1>
+                <h1 className="text-2xl font-bold">{group?.name}</h1>
                 <div className="text-sm text-muted-foreground">
                   Created by{" "}
-                  <Link href={`/profile/${group.creator.id}`} className="hover:underline">
-                    {group.creator.username}
+                  <Link href={`/profile/${group?.creator.id}`} className="hover:underline">
+                    {group?.creator.username}
                   </Link>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
                 <Button
                   variant="outline"
                   size="icon"
@@ -184,11 +186,12 @@ export default function GroupPage() {
                 </Button>
                 <Button
                   onClick={() => toggleMembership.mutate()}
-                  variant={group.isMember ? "outline" : "default"}
+                  variant={group?.isMember ? "outline" : "default"}
+                  className="flex-1 md:flex-none"
                 >
                   {toggleMembership.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : group.isMember ? (
+                  ) : group?.isMember ? (
                     "Leave Group"
                   ) : (
                     "Join Group"
@@ -221,9 +224,9 @@ export default function GroupPage() {
             ) : (
               <div className="flex items-start gap-2">
                 <p className="text-muted-foreground flex-1">
-                  {group.description || "No description yet"}
+                  {group?.description || "No description yet"}
                 </p>
-                {currentUser?.id === group.creator.id && (
+                {currentUser?.id === group?.creator.id && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -243,13 +246,13 @@ export default function GroupPage() {
         <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
             <Users className="h-5 w-5" />
-            <h2 className="text-xl font-semibold">Members ({group.memberCount})</h2>
+            <h2 className="text-xl font-semibold">Members ({group?.memberCount})</h2>
           </div>
 
           {!members?.length ? (
             <p className="text-muted-foreground">No members yet</p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {members?.map((member) => (
                 <Link key={member.id} href={`/profile/${member.id}`}>
                   <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer">
@@ -268,8 +271,19 @@ export default function GroupPage() {
 
       <div className="space-y-6">
         <Separator className="my-8" />
-        <h2 className="text-2xl font-semibold">Posts</h2>
-        {group.isMember && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">Posts</h2>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+        {group?.isMember && (
           <CreatePost
             groupId={group.id}
             onSuccess={() => {
@@ -279,11 +293,21 @@ export default function GroupPage() {
           />
         )}
 
-        <PostFeed groupId={group.id} searchQuery={searchQuery} showStatusOnly={showStatusOnly} selectedStatuses={selectedStatuses} showStarredOnly={showStarredOnly}/>
+        <PostFeed 
+          groupId={group?.id} 
+          searchQuery={searchQuery}
+          showStatusOnly={showStatusOnly}
+          selectedStatuses={selectedStatuses}
+          showStarredOnly={showStarredOnly}
+          onSearchChange={setSearchQuery}
+          onStatusOnlyChange={setShowStatusOnly}
+          onStarredOnlyChange={setShowStarredOnly}
+          onStatusesChange={setSelectedStatuses}
+        />
       </div>
 
       <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Share Group via QR Code</DialogTitle>
           </DialogHeader>
