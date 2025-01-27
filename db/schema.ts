@@ -124,7 +124,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   groupMemberships: many(groupMembers),
 }));
 
-// Update postsRelations to include followers
+// Update postsRelations to include followers and related posts
 export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, {
     fields: [posts.userId],
@@ -139,6 +139,8 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   likes: many(postLikes),
   embedding: one(postEmbeddings),
   followers: many(postFollowers),
+  relatedTo: many(relatedPosts, { relationName: "relatedTo" }),
+  relatedFrom: many(relatedPosts, { relationName: "relatedFrom" }),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -246,6 +248,27 @@ export const postFollowersRelations = relations(postFollowers, ({ one }) => ({
   }),
 }));
 
+// Add related posts table
+export const relatedPosts = pgTable("related_posts", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id, { onDelete: 'cascade' }).notNull(),
+  relatedPostId: integer("related_post_id").references(() => posts.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Add relations for related posts
+export const relatedPostsRelations = relations(relatedPosts, ({ one }) => ({
+  post: one(posts, {
+    fields: [relatedPosts.postId],
+    references: [posts.id],
+  }),
+  relatedPost: one(posts, {
+    fields: [relatedPosts.relatedPostId],
+    references: [posts.id],
+  }),
+}));
+
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -306,3 +329,9 @@ export const insertPostFollowerSchema = createInsertSchema(postFollowers);
 export const selectPostFollowerSchema = createSelectSchema(postFollowers);
 export type PostFollower = typeof postFollowers.$inferSelect;
 export type NewPostFollower = typeof postFollowers.$inferInsert;
+
+// Add schemas for related posts
+export const insertRelatedPostSchema = createInsertSchema(relatedPosts);
+export const selectRelatedPostSchema = createSelectSchema(relatedPosts);
+export type RelatedPost = typeof relatedPosts.$inferSelect;
+export type NewRelatedPost = typeof relatedPosts.$inferInsert;
