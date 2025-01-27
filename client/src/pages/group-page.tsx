@@ -66,7 +66,7 @@ export default function GroupPage() {
       setShowStatusOnly(false);
       setShowStarredOnly(false);
       setSelectedStatuses(STATUSES.filter(status => status !== 'none'));
-      setShowMatches(false); //Added to reset match display
+      setShowMatches(false);
     };
   }, [location]);
 
@@ -98,6 +98,69 @@ export default function GroupPage() {
     enabled: showMatches,
   });
 
+  const groupMatches = useMemo(() => {
+    if (!members || members.length < 2 || !showMatches) return [];
+    console.log("Calculating group matches");
+
+    const matches: GroupMatch[] = [];
+
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const user1 = members[i];
+        const user2 = members[j];
+
+        let score = 0;
+        let matchReason = "";
+        let hasEmbeddings = false;
+
+        const user1Embed = userEmbeddings?.find((ue) => ue.userId === user1.id);
+        const user2Embed = userEmbeddings?.find((ue) => ue.userId === user2.id);
+
+        hasEmbeddings = !!(user1Embed?.bioEmbedding || user1Embed?.lookingForEmbedding) &&
+                       !!(user2Embed?.bioEmbedding || user2Embed?.lookingForEmbedding);
+
+        if (user1Embed && user2Embed) {
+          const directSimilarity = user1Embed.bioEmbedding && user2Embed.lookingForEmbedding ?
+            cosineSim(user1Embed.bioEmbedding, user2Embed.lookingForEmbedding) : 0;
+
+          const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
+            cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
+
+          score = (directSimilarity + reverseSimilarity) / 2;
+
+          if (score > 0.7) {
+            matchReason = "Exceptional semantic compatibility";
+          } else if (score > 0.5) {
+            matchReason = "Strong mutual interest alignment";
+          } else if (score > 0.3) {
+            matchReason = "Good potential for connection";
+          } else if (score > 0.1) {
+            matchReason = "Some mutual interests";
+          }
+
+          if (Math.abs(directSimilarity - reverseSimilarity) > 0.2) {
+            matchReason += directSimilarity > reverseSimilarity 
+              ? `. ${user1.username} strongly matches ${user2.username}'s preferences`
+              : `. ${user2.username} strongly matches ${user1.username}'s preferences`;
+          }
+        }
+
+        if (!matchReason || score < 0.1) {
+          const basicMatch = calculateBasicMatchScore(user1, user2);
+          if (basicMatch.score > score) {
+            score = basicMatch.score;
+            matchReason = basicMatch.reasons.join(". ");
+          }
+        }
+
+        if (score > 0.1) {
+          matches.push({ user1, user2, score, matchReason, hasEmbeddings });
+        }
+      }
+    }
+
+    return matches.sort((a, b) => b.score - a.score);
+  }, [members, userEmbeddings, showMatches]);
 
   const toggleMembership = useMutation({
     mutationFn: async () => {
@@ -190,70 +253,6 @@ export default function GroupPage() {
     e.preventDefault();
     updateDescription.mutate(newDescription);
   };
-
-  const groupMatches = useMemo(() => {
-    if (!members || members.length < 2 || !showMatches) return [];
-    console.log("Calculating group matches");
-
-    const matches: GroupMatch[] = [];
-
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const user1 = members[i];
-        const user2 = members[j];
-
-        let score = 0;
-        let matchReason = "";
-        let hasEmbeddings = false;
-
-        const user1Embed = userEmbeddings?.find((ue) => ue.userId === user1.id);
-        const user2Embed = userEmbeddings?.find((ue) => ue.userId === user2.id);
-
-        hasEmbeddings = !!(user1Embed?.bioEmbedding || user1Embed?.lookingForEmbedding) &&
-                       !!(user2Embed?.bioEmbedding || user2Embed?.lookingForEmbedding);
-
-        if (user1Embed && user2Embed) {
-          const directSimilarity = user1Embed.bioEmbedding && user2Embed.lookingForEmbedding ?
-            cosineSim(user1Embed.bioEmbedding, user2Embed.lookingForEmbedding) : 0;
-
-          const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
-            cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
-
-          score = (directSimilarity + reverseSimilarity) / 2;
-
-          if (score > 0.7) {
-            matchReason = "Exceptional semantic compatibility";
-          } else if (score > 0.5) {
-            matchReason = "Strong mutual interest alignment";
-          } else if (score > 0.3) {
-            matchReason = "Good potential for connection";
-          } else if (score > 0.1) {
-            matchReason = "Some mutual interests";
-          }
-
-          if (Math.abs(directSimilarity - reverseSimilarity) > 0.2) {
-            matchReason += directSimilarity > reverseSimilarity 
-              ? `. ${user1.username} strongly matches ${user2.username}'s preferences`
-              : `. ${user2.username} strongly matches ${user1.username}'s preferences`;
-          }
-        }
-
-        if (!matchReason || score < 0.1) {
-          const basicMatch = calculateBasicMatchScore(user1, user2);
-          if (basicMatch.score > score) {
-            score = basicMatch.score;
-            matchReason = basicMatch.reasons.join(". ");
-          }
-        }
-
-        if (score > 0.1) {
-          matches.push({ user1, user2, score, matchReason, hasEmbeddings });
-        }
-      }
-    }
-
-    return matches.sort((a, b) => b.score - a.score);
-  }, [members, userEmbeddings, showMatches]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
