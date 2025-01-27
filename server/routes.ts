@@ -1455,8 +1455,8 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Invalid post ID");
     }
 
-    const { content } = req.body;
-    if (typeof content !== "string") {
+    const { content, privacy } = req.body;
+    if (!content || typeof content !== "string") {
       return res.status(400).send("Content must be a string");
     }
 
@@ -1485,7 +1485,10 @@ export function registerRoutes(app: Express): Server {
     // Update post
     const [updatedPost] = await db
       .update(posts)
-      .set({ content })
+      .set({ 
+        content,
+        privacy: privacy || post.privacy // Keep existing privacy if not provided
+      })
       .where(eq(posts.id, postId))
       .returning();
 
@@ -1519,9 +1522,6 @@ export function registerRoutes(app: Express): Server {
           with: {
             mentionedUser: {
               columns: {
-                id: true,
-                username: true,
-                avatar: true,
                 id: true,
                 username: true,
                 avatar: true,
