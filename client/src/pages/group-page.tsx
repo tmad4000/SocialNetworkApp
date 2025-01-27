@@ -126,7 +126,7 @@ export default function GroupPage() {
           const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
             cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
 
-          score = (directSimilarity + reverseSimilarity) / 2;
+          score = (directSimilarity * 0.7) + (reverseSimilarity * 0.3);
 
           if (score > 0.7) {
             matchReason = "Exceptional semantic compatibility";
@@ -189,7 +189,7 @@ export default function GroupPage() {
         const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
           cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
 
-        score = (directSimilarity + reverseSimilarity) / 2;
+        score = (directSimilarity * 0.7) + (reverseSimilarity * 0.3);
 
         if (score > 0.7) {
           matchReason = "Exceptional semantic compatibility";
