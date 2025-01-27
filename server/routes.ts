@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings, groups, groupMembers, postFollowers } from "@db/schema";
+import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings, groups, groupMembers, postFollowers, relatedPosts } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { generateEmbedding, calculateCosineSimilarity } from "./embeddings";
 import qr from 'qrcode';
@@ -1747,106 +1747,70 @@ export function registerRoutes(app: Express): Server {
   const POST_SIMILARITY_THRESHOLD = 0; // Show all posts with their scores for debugging
 
   app.get("/api/posts/:id/related", async (req, res) => {
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
     try {
-      // Get the source post with its embedding
-      const sourcePost = await db.query.posts.findFirst({
-        where: eq(posts.id, postId),
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).json({ message: "Invalid post ID" });
+      }
+
+      // Get manually related posts
+      const manuallyRelated = await db.query.relatedPosts.findMany({
+        where: eq(relatedPosts.postId, postId),
         with: {
-          user: {
-            columns: {
-              id: true,
-              username: true,
-              avatar: true,
-            }
-          },
-          embedding: true,
-          likes: true,
-          mentions: {
+          relatedPost: {
             with: {
-              mentionedUser: {
-                columns: {
-                  id: true,
-                  username: true,
-                  avatar: true,
-                }
-              }
+              user: true,
+              group: true
             }
           }
         }
       });
 
-      if (!sourcePost) {
-        return res.status(404).send("Post not found");
-      }
+      // Get semantically similar posts using embeddings
+      const [sourcePost, allPosts] = await Promise.all([
+        db.query.posts.findFirst({
+          where: eq(posts.id, postId),
+          with: { embedding: true }
+        }),
+        db.query.posts.findMany({
+          where: not(eq(posts.id, postId)),
+          with: {
+            embedding: true,
+            user: true,
+            group: true
+          }
+        })
+      ]);
 
-      if (!sourcePost.embedding) {
-        console.log(`No embedding found for source post ${postId}`);
+      if (!sourcePost || !sourcePost.embedding) {
         return res.json([]);
       }
 
-      // Get all other posts with their embeddings
-      const allPosts = await db.query.posts.findMany({
-        where: not(eq(posts.id, postId)),
-        with: {
-          user: {
-            columns: {
-              id: true,
-              username: true,
-              avatar: true,
-            }
-          },
-          embedding: true,
-          likes: true,
-          mentions: {
-            with: {
-              mentionedUser: {
-                columns: {
-                  id: true,
-                  username: true,
-                  avatar: true,
-                }
-              }
-            }
-          }
-        }
-      });
-
-      // Calculate similarities and sort
-      const postsWithSimilarity = allPosts
-        .map(post => {
-          if (!post.embedding) {
-            console.log(`No embedding found for target post ${post.id}`);
-            return { ...post, similarity: 0 };
-          }
-
-          const similarity = calculateCosineSimilarity(
-            sourcePost.embedding.embedding as number[],
-            post.embedding.embedding as number[]
-          );
-
-          console.log(`Similarity between posts ${sourcePost.id} and ${post.id}:`, {
-            sourceContent: sourcePost.content,
-            targetContent: post.content,
-            similarity
-          });
-
-          return {
-            ...post,
-            similarity,
-            likeCount: post.likes.length,
-            liked: req.user ? post.likes.some(like => like.userId === req.user.id) : false,
-            likes: undefined,
-          };
-        })
+      // Calculate similarities for posts that have embeddings
+      const similarPosts = allPosts
+        .filter(post => post.embedding)
+        .map(post => ({
+          ...post,
+          similarity: calculateCosineSimilarity(
+            sourcePost.embedding!.embedding as number[],
+            post.embedding!.embedding as number[]
+          )
+        }))
         .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5); // Get top 5 most similar posts
+        .slice(0, 5);
 
-      res.json(postsWithSimilarity);
+      // Combine and format response
+      const combinedResults = [
+        ...manuallyRelated.map(rel => ({
+          ...rel.relatedPost,
+          similarity: 1 // Manually related posts get highest similarity
+        })),
+        ...similarPosts.filter(post => 
+          !manuallyRelated.some(manual => manual.relatedPost.id === post.id)
+        )
+      ];
+
+      res.json(combinedResults);
     } catch (error) {
       console.error('Error fetching related posts:', error);
       res.status(500).json({ message: "Error fetching related posts" });
@@ -2219,6 +2183,116 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error generating post QR code:', error);
       res.status(500).send("Error generating QR code");
+    }
+  });
+
+  // Add related post
+  app.post("/api/posts/:id/related", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const postId = parseInt(req.params.id);
+      const { relatedPostId } = req.body;
+
+      if (isNaN(postId) || !relatedPostId) {
+        return res.status(400).json({ message: "Invalid post IDs" });
+      }
+
+      // Verify both posts exist
+      const [sourcePost, targetPost] = await Promise.all([
+        db.query.posts.findFirst({ where: eq(posts.id, postId) }),
+        db.query.posts.findFirst({ where: eq(posts.id, relatedPostId) })
+      ]);
+
+      if (!sourcePost || !targetPost) {
+        return res.status(404).json({ message: "One or both posts not found" });
+      }
+
+      // Add the relationship
+      await db.insert(relatedPosts).values({
+        postId: postId,
+        relatedPostId,
+        createdBy: req.user.id
+      });
+
+      res.json({ message: "Related post added successfully" });
+    } catch (error) {
+      console.error('Error adding related post:', error);
+      res.status(500).json({ message: "Error adding related post" });
+    }
+  });
+
+  // Get related posts
+  app.get("/api/posts/:id/related", async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).json({ message: "Invalid post ID" });
+      }
+
+      // Get manually related posts
+      const manuallyRelated = await db.query.relatedPosts.findMany({
+        where: eq(relatedPosts.postId, postId),
+        with: {
+          relatedPost: {
+            with: {
+              user: true,
+              group: true
+            }
+          }
+        }
+      });
+
+      // Get semantically similar posts using embeddings
+      const [sourcePost, allPosts] = await Promise.all([
+        db.query.posts.findFirst({
+          where: eq(posts.id, postId),
+          with: { embedding: true }
+        }),
+        db.query.posts.findMany({
+          where: not(eq(posts.id, postId)),
+          with: {
+            embedding: true,
+            user: true,
+            group: true
+          }
+        })
+      ]);
+
+      if (!sourcePost || !sourcePost.embedding) {
+        return res.json([]);
+      }
+
+      // Calculate similarities for posts that have embeddings
+      const similarPosts = allPosts
+        .filter(post => post.embedding)
+        .map(post => ({
+          ...post,
+          similarity: calculateCosineSimilarity(
+            sourcePost.embedding!.embedding as number[],
+            post.embedding!.embedding as number[]
+          )
+        }))
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5);
+
+      // Combine and format response
+      const combinedResults = [
+        ...manuallyRelated.map(rel => ({
+          ...rel.relatedPost,
+          similarity: 1 // Manually related posts get highest similarity
+        })),
+        ...similarPosts.filter(post =>
+          !manuallyRelated.some(manual => manual.relatedPost.id === post.id)
+        )
+      ];
+
+      res.json(combinedResults);
+    } catch (error) {
+      console.error('Error fetching related posts:', error);
+      res.status(500).json({ message: "Error fetching related posts" });
     }
   });
 

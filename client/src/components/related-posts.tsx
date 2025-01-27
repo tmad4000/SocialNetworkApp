@@ -56,15 +56,13 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Accept": "application/json"
         },
         body: JSON.stringify({ relatedPostId }),
         credentials: "include",
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText);
+        throw new Error(await res.text());
       }
 
       return res.json();

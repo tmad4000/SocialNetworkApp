@@ -248,15 +248,16 @@ export const postFollowersRelations = relations(postFollowers, ({ one }) => ({
   }),
 }));
 
-// Add related posts table
+// Update related posts table with createdBy field and better relations
 export const relatedPosts = pgTable("related_posts", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").references(() => posts.id, { onDelete: 'cascade' }).notNull(),
   relatedPostId: integer("related_post_id").references(() => posts.id, { onDelete: 'cascade' }).notNull(),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Add relations for related posts
+// Update relations for related posts to include creator
 export const relatedPostsRelations = relations(relatedPosts, ({ one }) => ({
   post: one(posts, {
     fields: [relatedPosts.postId],
@@ -266,8 +267,11 @@ export const relatedPostsRelations = relations(relatedPosts, ({ one }) => ({
     fields: [relatedPosts.relatedPostId],
     references: [posts.id],
   }),
+  creator: one(users, {
+    fields: [relatedPosts.createdBy],
+    references: [users.id],
+  }),
 }));
-
 
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
