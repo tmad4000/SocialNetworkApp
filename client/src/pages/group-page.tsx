@@ -162,6 +162,73 @@ export default function GroupPage() {
     return matches.sort((a, b) => b.score - a.score);
   }, [members, userEmbeddings, showMatches]);
 
+  const personalMatches = useMemo(() => {
+    if (!members || !currentUser || !showMatches) return [];
+    console.log("Calculating personal matches within group");
+
+    const matches: GroupMatch[] = [];
+
+    // Compare current user with each member except themselves
+    for (const member of members) {
+      if (member.id === currentUser.id) continue;
+
+      let score = 0;
+      let matchReason = "";
+      let hasEmbeddings = false;
+
+      const user1Embed = userEmbeddings?.find((ue) => ue.userId === currentUser.id);
+      const user2Embed = userEmbeddings?.find((ue) => ue.userId === member.id);
+
+      hasEmbeddings = !!(user1Embed?.bioEmbedding || user1Embed?.lookingForEmbedding) &&
+                     !!(user2Embed?.bioEmbedding || user2Embed?.lookingForEmbedding);
+
+      if (user1Embed && user2Embed) {
+        const directSimilarity = user1Embed.bioEmbedding && user2Embed.lookingForEmbedding ?
+          cosineSim(user1Embed.bioEmbedding, user2Embed.lookingForEmbedding) : 0;
+
+        const reverseSimilarity = user2Embed.bioEmbedding && user1Embed.lookingForEmbedding ?
+          cosineSim(user2Embed.bioEmbedding, user1Embed.lookingForEmbedding) : 0;
+
+        score = (directSimilarity + reverseSimilarity) / 2;
+
+        if (score > 0.7) {
+          matchReason = "Exceptional semantic compatibility";
+        } else if (score > 0.5) {
+          matchReason = "Strong mutual interest alignment";
+        } else if (score > 0.3) {
+          matchReason = "Good potential for connection";
+        } else if (score > 0.1) {
+          matchReason = "Some mutual interests";
+        } else {
+          matchReason = "Low semantic match";
+        }
+
+        if (Math.abs(directSimilarity - reverseSimilarity) > 0.2) {
+          matchReason += directSimilarity > reverseSimilarity 
+            ? `. Your profile strongly matches ${member.username}'s preferences`
+            : `. ${member.username} strongly matches your preferences`;
+        }
+      }
+
+      // Always calculate basic match score
+      const basicMatch = calculateBasicMatchScore(currentUser, member);
+      if (!matchReason || basicMatch.score > score) {
+        score = basicMatch.score;
+        matchReason = basicMatch.reasons.join(". ");
+      }
+
+      matches.push({ 
+        user1: currentUser, 
+        user2: member, 
+        score, 
+        matchReason, 
+        hasEmbeddings 
+      });
+    }
+
+    return matches.sort((a, b) => b.score - a.score);
+  }, [members, currentUser, userEmbeddings, showMatches]);
+
   const toggleMembership = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/groups/${params?.id}/${group?.isMember ? 'leave' : 'join'}`, {
@@ -379,74 +446,131 @@ export default function GroupPage() {
               </div>
 
               {showMatches && (
-                <div className="mt-6 space-y-4">
-                  <h3 className="text-lg font-semibold">Group Match Strengths</h3>
-                  {groupMatches.length > 0 ? (
-                    <div className="grid gap-4">
-                      {groupMatches.map(({ user1, user2, score, matchReason, hasEmbeddings }, index) => (
-                        <Card key={`${user1.id}-${user2.id}`} className="hover:bg-accent transition-colors">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-2">
-                                <Link href={`/profile/${user1.id}`}>
-                                  <div className="flex items-center gap-2 hover:underline">
-                                    <Avatar className="h-8 w-8">
-                                      <AvatarImage 
-                                        src={user1.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user1.username}`}
-                                      />
-                                      <AvatarFallback>{user1.username[0]}</AvatarFallback>
-                                    </Avatar>
-                                    <span className="font-medium">{user1.username}</span>
-                                  </div>
-                                </Link>
-                                <span className="text-muted-foreground">&</span>
-                                <Link href={`/profile/${user2.id}`}>
+                <>
+                  <div className="mt-6 space-y-4">
+                    <h3 className="text-lg font-semibold">Your Matches in This Group</h3>
+                    {personalMatches.length > 0 ? (
+                      <div className="grid gap-4">
+                        {personalMatches.map(({ user2: member, score, matchReason, hasEmbeddings }) => (
+                          <Card key={member.id} className="hover:bg-accent transition-colors">
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-4">
+                                <Link href={`/profile/${member.id}`}>
                                   <div className="flex items-center gap-2 hover:underline">
                                     <Avatar className="h-8 w-8">
                                       <AvatarImage
-                                        src={user2.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user2.username}`}
+                                        src={member.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${member.username}`}
                                       />
-                                      <AvatarFallback>{user2.username[0]}</AvatarFallback>
+                                      <AvatarFallback>{member.username[0]}</AvatarFallback>
                                     </Avatar>
-                                    <span className="font-medium">{user2.username}</span>
+                                    <span className="font-medium">{member.username}</span>
                                   </div>
                                 </Link>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium">Match Score:</span>
-                                  <Progress value={score * 100} className="w-32" />
-                                  <span className="text-sm text-muted-foreground">
-                                    {Math.round(score * 100)}%
-                                  </span>
-                                  {!hasEmbeddings && (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger>
-                                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>Basic matching only - semantic embeddings not yet available</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">Match Score:</span>
+                                    <Progress value={score * 100} className="w-32" />
+                                    <span className="text-sm text-muted-foreground">
+                                      {Math.round(score * 100)}%
+                                    </span>
+                                    {!hasEmbeddings && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Basic matching only - semantic embeddings not yet available</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    {matchReason}
+                                  </p>
                                 </div>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {matchReason}
-                                </p>
                               </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      No strong matches found between group members yet. This could be because members haven't completed their profiles or the matching threshold wasn't met.
-                    </p>
-                  )}
-                </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No matches found between you and other group members yet. This could be because profiles haven't been completed or no matching criteria were met.
+                      </p>
+                    )}
+                  </div>
+                  <Separator className="my-6" />
+                  <div className="mt-6 space-y-4">
+                    <h3 className="text-lg font-semibold">All Group Match Strengths</h3>
+                    {groupMatches.length > 0 ? (
+                      <div className="grid gap-4">
+                        {groupMatches.map(({ user1, user2, score, matchReason, hasEmbeddings }, index) => (
+                          <Card key={`${user1.id}-${user2.id}`} className="hover:bg-accent transition-colors">
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Link href={`/profile/${user1.id}`}>
+                                    <div className="flex items-center gap-2 hover:underline">
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage 
+                                          src={user1.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user1.username}`}
+                                        />
+                                        <AvatarFallback>{user1.username[0]}</AvatarFallback>
+                                      </Avatar>
+                                      <span className="font-medium">{user1.username}</span>
+                                    </div>
+                                  </Link>
+                                  <span className="text-muted-foreground">&</span>
+                                  <Link href={`/profile/${user2.id}`}>
+                                    <div className="flex items-center gap-2 hover:underline">
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage
+                                          src={user2.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user2.username}`}
+                                        />
+                                        <AvatarFallback>{user2.username[0]}</AvatarFallback>
+                                      </Avatar>
+                                      <span className="font-medium">{user2.username}</span>
+                                    </div>
+                                  </Link>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">Match Score:</span>
+                                    <Progress value={score * 100} className="w-32" />
+                                    <span className="text-sm text-muted-foreground">
+                                      {Math.round(score * 100)}%
+                                    </span>
+                                    {!hasEmbeddings && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Basic matching only - semantic embeddings not yet available</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    {matchReason}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No strong matches found between group members yet. This could be because members haven't completed their profiles or the matching threshold wasn't met.
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}
