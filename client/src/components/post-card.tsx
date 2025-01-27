@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
@@ -40,7 +41,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
@@ -66,7 +66,7 @@ export default function PostCard({ post }: PostCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
-  const [editedPrivacy, setEditedPrivacy] = useState(post.privacy);
+  const [editedPrivacy, setEditedPrivacy] = useState(post.privacy || 'public');
   const { user: currentUser } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -121,8 +121,8 @@ export default function PostCard({ post }: PostCardProps) {
           if (p.id === post.id) {
             return {
               ...p,
-              content: newData.content ?? p.content,
-              privacy: newData.privacy ?? p.privacy,
+              ...(newData.content !== undefined && { content: newData.content }),
+              ...(newData.privacy !== undefined && { privacy: newData.privacy }),
             };
           }
           return p;
@@ -229,8 +229,9 @@ export default function PostCard({ post }: PostCardProps) {
     editPost.mutate({ content: editedContent, privacy: editedPrivacy });
   };
 
-  const handlePrivacyChange = (privacy: string) => {
-    editPost.mutate({ privacy }); // Only send privacy update
+  const handlePrivacyChange = (newPrivacy: string) => {
+    setEditedPrivacy(newPrivacy);
+    editPost.mutate({ privacy: newPrivacy });
   };
 
   const renderContent = (content: string) => {
