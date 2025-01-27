@@ -2,9 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings, groups, groupMembers } from "@db/schema";
+import { posts, users, friends, postMentions, postLikes, comments, commentLikes, userEmbeddings, postEmbeddings, groups, groupMembers, postFollowers } from "@db/schema";
 import { eq, desc, and, or, inArray, ilike, sql, not } from "drizzle-orm";
 import { generateEmbedding, calculateCosineSimilarity } from "./embeddings";
+import qr from 'qrcode';
 
 export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
@@ -1955,6 +1956,130 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error toggling star status:', error);
       res.status(500).send("Error toggling star status");
+    }
+  });
+
+  // Add post follow/unfollow routes after the existing post routes
+  app.post("/api/posts/:id/follow", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      // Check if post exists
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      // Check if already following
+      const existingFollow = await db.query.postFollowers.findFirst({
+        where: and(
+          eq(postFollowers.postId, postId),
+          eq(postFollowers.userId, req.user.id)
+        ),
+      });
+
+      if (existingFollow) {
+        // Unfollow
+        await db
+          .delete(postFollowers)
+          .where(eq(postFollowers.id, existingFollow.id));
+        res.json({ following: false });
+      } else {
+        // Follow
+        await db.insert(postFollowers).values({
+          postId,
+          userId: req.user.id,
+        });
+        res.json({ following: true });
+      }
+    } catch (error) {
+      console.error('Error following/unfollowing post:', error);
+      res.status(500).send("Error following/unfollowing post");
+    }
+  });
+
+  app.get("/api/posts/:id/following", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      const following = await db.query.postFollowers.findFirst({
+        where: and(
+          eq(postFollowers.postId, postId),
+          eq(postFollowers.userId, req.user.id)
+        ),
+      });
+
+      res.json({ following: !!following });
+    } catch (error) {
+      console.error('Error checking follow status:', error);
+      res.status(500).send("Error checking follow status");
+    }
+  });
+
+  // Add QR code routes
+
+  app.get("/api/groups/:id/qr", async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    try {
+      const group = await db.query.groups.findFirst({
+        where: eq(groups.id, groupId),
+      });
+
+      if (!group) {
+        return res.status(404).send("Group not found");
+      }
+
+      const url = `${req.protocol}://${req.get('host')}/groups/${groupId}`;
+      const qrCode = await qr.toDataURL(url);
+      res.json({ qrCode });
+    } catch (error) {
+      console.error('Error generating group QR code:', error);
+      res.status(500).send("Error generating QR code");
+    }
+  });
+
+  app.get("/api/posts/:id/qr", async (req, res) => {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      const url = `${req.protocol}://${req.get('host')}/post/${postId}`;
+      const qrCode = await qr.toDataURL(url);
+      res.json({ qrCode });
+    } catch (error) {
+      console.error('Error generating post QR code:', error);
+      res.status(500).send("Error generating QR code");
     }
   });
 
