@@ -23,6 +23,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -82,7 +87,7 @@ export default function PostCard({ post }: PostCardProps) {
   });
 
   const editPost = useMutation({
-    mutationFn: async (data: { content: string; privacy: string }) => {
+    mutationFn: async (data: { content?: string; privacy?: string }) => {
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -111,8 +116,8 @@ export default function PostCard({ post }: PostCardProps) {
           if (p.id === post.id) {
             return {
               ...p,
-              content: newData.content,
-              privacy: newData.privacy,
+              content: newData.content ?? p.content,
+              privacy: newData.privacy ?? p.privacy,
             };
           }
           return p;
@@ -219,6 +224,10 @@ export default function PostCard({ post }: PostCardProps) {
     editPost.mutate({ content: editedContent, privacy: editedPrivacy });
   };
 
+  const handlePrivacyChange = (privacy: string) => {
+    editPost.mutate({ privacy });
+  };
+
   const renderContent = (content: string) => {
     const parts = content.split(/(@\w+)/g);
     return parts.map((part, index) => {
@@ -289,14 +298,71 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   const renderPrivacyIcon = () => {
-    switch (post.privacy) {
-      case 'private':
-        return <Lock className="h-4 w-4 text-muted-foreground" aria-label="Private post" />;
-      case 'friends':
-        return <Users className="h-4 w-4 text-muted-foreground" aria-label="Friends only post" />;
-      default:
-        return <Globe className="h-4 w-4 text-muted-foreground" aria-label="Public post" />;
+    const isOwner = currentUser?.id === post.user.id;
+    const icon = (() => {
+      switch (post.privacy) {
+        case 'private':
+          return <Lock className="h-4 w-4" aria-label="Private post" />;
+        case 'friends':
+          return <Users className="h-4 w-4" aria-label="Friends only post" />;
+        default:
+          return <Globe className="h-4 w-4" aria-label="Public post" />;
+      }
+    })();
+
+    if (isOwner && !post.groupId) {
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              className={`p-0 h-4 hover:bg-transparent ${editPost.isPending ? 'opacity-50' : ''}`}
+              disabled={editPost.isPending}
+            >
+              {icon}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-0">
+            <div className="space-y-1 p-1">
+              <Button
+                variant={post.privacy === 'public' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => handlePrivacyChange('public')}
+              >
+                <Globe className="h-4 w-4" />
+                <span>Public</span>
+              </Button>
+              <Button
+                variant={post.privacy === 'friends' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => handlePrivacyChange('friends')}
+              >
+                <Users className="h-4 w-4" />
+                <span>Friends</span>
+              </Button>
+              <Button
+                variant={post.privacy === 'private' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => handlePrivacyChange('private')}
+              >
+                <Lock className="h-4 w-4" />
+                <span>Private</span>
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      );
     }
+
+    return (
+      <span className="text-muted-foreground">
+        {icon}
+      </span>
+    );
   };
 
   return (
