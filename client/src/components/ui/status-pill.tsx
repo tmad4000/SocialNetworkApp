@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Clock, Loader2, MinusCircle } from "lucide-react";
+import { Check, Clock, MinusCircle } from "lucide-react";
 
 export type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 
@@ -25,10 +25,11 @@ const statusConfig = {
     next: 'in progress' as Status,
   },
   'in progress': {
-    icon: Loader2,
+    icon: Clock,
     color: 'text-blue-600 dark:text-blue-400',
     bg: 'bg-blue-100 dark:bg-blue-900/50',
     next: 'done' as Status,
+    animate: true,
   },
   done: {
     icon: Check,
@@ -77,8 +78,8 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
         }
       });
 
-      // Snapshot the previous values
-      const previousData: { [key: string]: any } = {};
+      // Get snapshot of current data
+      const previousData = new Map();
       queryClient.getQueriesData({ 
         predicate: (query) => {
           const queryKey = query.queryKey[0];
@@ -89,10 +90,7 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           );
         }
       }).forEach(([queryKey, data]) => {
-        if (Array.isArray(queryKey)) {
-          const key = JSON.stringify(queryKey);
-          previousData[key] = data;
-        }
+        previousData.set(JSON.stringify(queryKey), data);
       });
 
       // Optimistically update all matching queries
@@ -113,23 +111,21 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
           );
         }
       }).forEach(([queryKey]) => {
-        if (Array.isArray(queryKey)) {
-          queryClient.setQueryData(queryKey, (old: any) =>
-            Array.isArray(old) ? old.map(updatePost) : old
-          );
-        }
+        queryClient.setQueryData(queryKey, (old: any) =>
+          Array.isArray(old) ? old.map(updatePost) : old
+        );
       });
 
       return { previousData };
     },
     onError: (err, newStatus, context) => {
-      // Revert the optimistic update
-      if (context) {
-        Object.entries(context.previousData).forEach(([queryKeyStr, data]) => {
+      if (context?.previousData) {
+        context.previousData.forEach((data, queryKeyStr) => {
           const queryKey = JSON.parse(queryKeyStr);
           queryClient.setQueryData(queryKey, data);
         });
       }
+
       toast({
         variant: "destructive",
         title: "Error",
@@ -137,29 +133,25 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
       });
     },
     onSettled: () => {
-      // Refetch to ensure our optimistic update matches server state
-      queryClient.invalidateQueries({ 
-        predicate: (query) => {
-          const queryKey = query.queryKey[0];
-          return typeof queryKey === 'string' && (
-            queryKey === "/api/posts" || 
-            queryKey.startsWith("/api/posts/user/") ||
-            queryKey.startsWith("/api/groups/")
-          );
-        }
-      });
+      // No need to invalidate queries since we're handling optimistic updates
     },
   });
+
+  const handleClick = () => {
+    if (!updateStatus.isPending) {
+      updateStatus.mutate(config.next);
+    }
+  };
 
   return (
     <Button
       variant="outline"
       size="sm"
       className={`${config.bg} hover:${config.bg} ${config.color} gap-1.5`}
-      onClick={() => updateStatus.mutate(config.next)}
+      onClick={handleClick}
       disabled={updateStatus.isPending}
     >
-      <Icon className={`h-4 w-4 ${status === 'in progress' || updateStatus.isPending ? "animate-spin" : ""}`} />
+      <Icon className={`h-4 w-4 ${config.animate && !updateStatus.isPending ? "animate-spin" : ""}`} />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );

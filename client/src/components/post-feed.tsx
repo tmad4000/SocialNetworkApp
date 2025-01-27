@@ -90,7 +90,7 @@ export default function PostFeed({
     }
   };
 
-  const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
+  const { data: posts, isInitialLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
     staleTime: 5000, // Consider data fresh for 5 seconds
   });
@@ -139,6 +139,14 @@ export default function PostFeed({
   // Only show filter bar if not being controlled by parent
   const showFilterBar = !externalSearchQuery && !externalShowStatusOnly && !externalShowStarredOnly;
 
+  if (isInitialLoading) {
+    return (
+      <div className="text-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {showFilterBar && (
@@ -164,11 +172,7 @@ export default function PostFeed({
         </div>
       )}
 
-      {isLoading && !posts ? (
-        <div className="text-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
-        </div>
-      ) : filteredPosts.length === 0 ? (
+      {filteredPosts.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">
           {searchQuery ? "No posts found matching your search." : "No posts yet"}
         </p>
