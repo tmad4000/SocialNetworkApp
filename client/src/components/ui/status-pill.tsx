@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Clock, MinusCircle } from "lucide-react";
+import { Check, Clock, Loader2, MinusCircle } from "lucide-react";
 
 export type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 
@@ -25,11 +25,10 @@ const statusConfig = {
     next: 'in progress' as Status,
   },
   'in progress': {
-    icon: Clock,
+    icon: Loader2,
     color: 'text-blue-600 dark:text-blue-400',
     bg: 'bg-blue-100 dark:bg-blue-900/50',
     next: 'done' as Status,
-    animate: true,
   },
   done: {
     icon: Check,
@@ -132,26 +131,17 @@ export default function StatusPill({ status, postId }: StatusPillProps) {
         description: err.message,
       });
     },
-    onSettled: () => {
-      // No need to invalidate queries since we're handling optimistic updates
-    },
   });
-
-  const handleClick = () => {
-    if (!updateStatus.isPending) {
-      updateStatus.mutate(config.next);
-    }
-  };
 
   return (
     <Button
       variant="outline"
       size="sm"
       className={`${config.bg} hover:${config.bg} ${config.color} gap-1.5`}
-      onClick={handleClick}
+      onClick={() => !updateStatus.isPending && updateStatus.mutate(config.next)}
       disabled={updateStatus.isPending}
     >
-      <Icon className={`h-4 w-4 ${config.animate && !updateStatus.isPending ? "animate-spin" : ""}`} />
+      <Icon className={`h-4 w-4 ${status === 'in progress' ? "animate-spin" : ""}`} />
       <span className="capitalize">{status === 'none' ? 'Set Status' : status}</span>
     </Button>
   );
