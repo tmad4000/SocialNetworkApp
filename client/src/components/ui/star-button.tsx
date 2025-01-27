@@ -29,7 +29,7 @@ export default function StarButton({
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       await queryClient.cancelQueries({ queryKey: [`/api/posts/${postId}`] });
-      await queryClient.cancelQueries({ queryKey: [`/api/posts/user`] });
+      await queryClient.cancelQueries({ queryKey: ["/api/posts/user"] });
 
       // Snapshot the previous values
       const previousPost = queryClient.getQueryData([`/api/posts/${postId}`]);
@@ -42,17 +42,18 @@ export default function StarButton({
           ? { ...post, starred: !initialStarred }
           : post;
 
-      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => 
-        updatePost(old)
-      );
+      const queries = [
+        ["/api/posts"],
+        [`/api/posts/${postId}`],
+        ["/api/posts/user"]
+      ];
 
-      queryClient.setQueryData(["/api/posts"], (old: any[]) => 
-        old?.map(updatePost)
-      );
-
-      queryClient.setQueryData(["/api/posts/user"], (old: any[]) => 
-        old?.map(updatePost)
-      );
+      queries.forEach(queryKey => {
+        const isArray = queryKey[0] === "/api/posts" || queryKey[0] === "/api/posts/user";
+        queryClient.setQueryData(queryKey, (old: any) => 
+          isArray ? (old || []).map(updatePost) : updatePost(old)
+        );
+      });
 
       return { previousPost, previousPosts, previousUserPosts };
     },
@@ -77,17 +78,18 @@ export default function StarButton({
           ? { ...post, starred: data.starred }
           : post;
 
-      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => 
-        updatePost(old)
-      );
+      const queries = [
+        ["/api/posts"],
+        [`/api/posts/${postId}`],
+        ["/api/posts/user"]
+      ];
 
-      queryClient.setQueryData(["/api/posts"], (old: any[]) =>
-        old?.map(updatePost)
-      );
-
-      queryClient.setQueryData(["/api/posts/user"], (old: any[]) =>
-        old?.map(updatePost)
-      );
+      queries.forEach(queryKey => {
+        const isArray = queryKey[0] === "/api/posts" || queryKey[0] === "/api/posts/user";
+        queryClient.setQueryData(queryKey, (old: any) => 
+          isArray ? (old || []).map(updatePost) : updatePost(old)
+        );
+      });
 
       toast({
         title: data.starred ? "Added to best ideas" : "Removed from best ideas",
