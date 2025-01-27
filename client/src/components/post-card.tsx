@@ -211,7 +211,7 @@ export default function PostCard({ post }: PostCardProps) {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <Link href={`/profile/${post.user.id}`}>
-              <span className="font-semibold hover:underline cursor-pointer">
+              <span className="text-muted-foreground hover:underline cursor-pointer">
                 {post.user.username}
               </span>
             </Link>

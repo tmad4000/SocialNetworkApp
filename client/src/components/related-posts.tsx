@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { Post } from "@db/schema";
@@ -24,7 +24,7 @@ type RelatedPost = Post & {
 export default function RelatedPosts({ postId }: RelatedPostsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const { data: relatedPosts, isLoading } = useQuery<RelatedPost[]>({
+  const { data: relatedPosts, isLoading, isError } = useQuery<RelatedPost[]>({
     queryKey: [`/api/posts/${postId}/related`],
     enabled: isOpen,
   });
@@ -36,7 +36,7 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
         className="w-full flex justify-between items-center py-2 px-6"
         onClick={() => setIsOpen(true)}
       >
-        <span className="text-sm text-muted-foreground">Show all posts with similarity scores</span>
+        <span className="text-sm text-muted-foreground">Show related posts</span>
         <ChevronDown className="h-4 w-4" />
       </Button>
     );
@@ -54,8 +54,18 @@ export default function RelatedPosts({ postId }: RelatedPostsProps) {
       </Button>
 
       {isLoading ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <p>Processing related posts...</p>
+          <p className="text-sm">This might take a moment while we analyze content similarities</p>
+        </div>
+      ) : isError ? (
         <div className="text-center text-muted-foreground py-4">
-          Finding related posts...
+          Unable to load related posts at this time
+        </div>
+      ) : relatedPosts?.length === 0 ? (
+        <div className="text-center text-muted-foreground py-4">
+          No related posts found
         </div>
       ) : (
         <div className="space-y-6">
