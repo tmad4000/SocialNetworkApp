@@ -35,7 +35,6 @@ interface PostCardProps {
     mentions: (PostMention & { mentionedUser: User })[];
     likeCount: number;
     liked: boolean;
-    starCount: number;
     starred: boolean;
     group?: Group;
   };
