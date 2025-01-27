@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import type { Post, User, PostMention, Group } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
-import { useLocation } from "wouter";
 
 interface PostFeedProps {
   userId?: number;
@@ -15,6 +14,10 @@ interface PostFeedProps {
   showStatusOnly?: boolean;
   showStarredOnly?: boolean;
   selectedStatuses?: Status[];
+  onSearchChange?: (query: string) => void;
+  onStatusOnlyChange?: (show: boolean) => void;
+  onStarredOnlyChange?: (show: boolean) => void;
+  onStatusesChange?: (statuses: Status[]) => void;
 }
 
 type PostWithDetails = Post & {
@@ -31,12 +34,61 @@ const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in prog
 export default function PostFeed({ 
   userId, 
   groupId,
-  searchQuery = "",
-  showStatusOnly = false,
-  showStarredOnly = false,
-  selectedStatuses = STATUSES.filter(status => status !== 'none')
+  searchQuery: externalSearchQuery,
+  showStatusOnly: externalShowStatusOnly,
+  showStarredOnly: externalShowStarredOnly,
+  selectedStatuses: externalSelectedStatuses,
+  onSearchChange,
+  onStatusOnlyChange,
+  onStarredOnlyChange,
+  onStatusesChange,
 }: PostFeedProps) {
-  const [location] = useLocation();
+  // Internal state for uncontrolled mode
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const [internalShowStatusOnly, setInternalShowStatusOnly] = useState(false);
+  const [internalShowStarredOnly, setInternalShowStarredOnly] = useState(false);
+  const [internalSelectedStatuses, setInternalSelectedStatuses] = useState<Status[]>(
+    STATUSES.filter(status => status !== 'none')
+  );
+
+  // Use external or internal state based on whether props are provided
+  const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const showStatusOnly = externalShowStatusOnly ?? internalShowStatusOnly;
+  const showStarredOnly = externalShowStarredOnly ?? internalShowStarredOnly;
+  const selectedStatuses = externalSelectedStatuses ?? internalSelectedStatuses;
+
+  // Handlers that update either external or internal state
+  const handleSearchChange = (query: string) => {
+    if (onSearchChange) {
+      onSearchChange(query);
+    } else {
+      setInternalSearchQuery(query);
+    }
+  };
+
+  const handleStatusOnlyChange = (show: boolean) => {
+    if (onStatusOnlyChange) {
+      onStatusOnlyChange(show);
+    } else {
+      setInternalShowStatusOnly(show);
+    }
+  };
+
+  const handleStarredOnlyChange = (show: boolean) => {
+    if (onStarredOnlyChange) {
+      onStarredOnlyChange(show);
+    } else {
+      setInternalShowStarredOnly(show);
+    }
+  };
+
+  const handleStatusesChange = (statuses: Status[]) => {
+    if (onStatusesChange) {
+      onStatusesChange(statuses);
+    } else {
+      setInternalSelectedStatuses(statuses);
+    }
+  };
 
   const { data: posts, isLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
@@ -46,7 +98,7 @@ export default function PostFeed({
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    // Always sort by createdAt first, regardless of other filters
+    // Always sort by createdAt first
     let sorted = [...posts].sort((a, b) => 
       new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
     );
@@ -85,7 +137,7 @@ export default function PostFeed({
   }, [posts]);
 
   // Only show filter bar if not being controlled by parent
-  const showFilterBar = searchQuery === "" && !showStatusOnly && !showStarredOnly;
+  const showFilterBar = !externalSearchQuery && !externalShowStatusOnly && !externalShowStarredOnly;
 
   return (
     <div className="space-y-6">
@@ -96,18 +148,18 @@ export default function PostFeed({
             <Input
               placeholder="Search posts..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10"
             />
           </div>
           <PostFilter 
-            showStatusOnly={showStatusOnly} 
-            onFilterChange={setShowStatusOnly}
+            showStatusOnly={showStatusOnly}
+            onFilterChange={handleStatusOnlyChange}
             selectedStatuses={selectedStatuses}
-            onStatusesChange={setSelectedStatuses}
+            onStatusesChange={handleStatusesChange}
             statusCounts={statusCounts}
             showStarredOnly={showStarredOnly}
-            onStarredFilterChange={setShowStarredOnly}
+            onStarredFilterChange={handleStarredOnlyChange}
           />
         </div>
       )}
