@@ -74,18 +74,32 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
   const addRelatedPost = useMutation({
     mutationFn: async (relatedPostId: number) => {
-      const res = await fetch(`/api/posts/${postId}/related`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ relatedPostId }),
-        credentials: "include",
-      });
+      try {
+        const res = await fetch(`/api/posts/${postId}/related`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({ relatedPostId }),
+          credentials: "include",
+        });
 
-      if (!res.ok) {
-        throw new Error(await res.text());
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText);
+        }
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Invalid response format from server");
+        }
+
+        return res.json();
+      } catch (error: any) {
+        console.error("Error adding related post:", error);
+        throw new Error(error.message);
       }
-
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/posts/${postId}/related`] });
@@ -93,46 +107,62 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
         title: "Success",
         description: "Related post added successfully",
       });
+      setSearchText("");
+      setIsPopoverOpen(false);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error("Mutation error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to add related post",
       });
     },
   });
 
   const createRelatedPost = useMutation({
     mutationFn: async (content: string) => {
-      const res = await fetch("/api/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          content,
-          groupId,
-          userId,
-        }),
-        credentials: "include",
-      });
+      try {
+        const res = await fetch("/api/posts", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({ 
+            content,
+            groupId,
+            userId,
+          }),
+          credentials: "include",
+        });
 
-      if (!res.ok) {
-        throw new Error(await res.text());
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText);
+        }
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Invalid response format from server");
+        }
+
+        return res.json();
+      } catch (error: any) {
+        console.error("Error creating related post:", error);
+        throw new Error(error.message);
       }
-
-      return res.json();
     },
     onSuccess: (data) => {
       addRelatedPost.mutate(data.id);
-      setSearchText("");
-      setIsPopoverOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error("Mutation error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to create related post",
       });
     },
   });
@@ -189,8 +219,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                               key={post.id}
                               onSelect={() => {
                                 addRelatedPost.mutate(post.id);
-                                setSearchText("");
-                                setIsPopoverOpen(false);
                               }}
                             >
                               <span className="truncate">
