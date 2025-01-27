@@ -548,7 +548,11 @@ export default function PostCard({ post }: PostCardProps) {
           </CardFooter>
         </Collapsible>
         <div className="border-t">
-          <RelatedPosts postId={post.id} />
+          <RelatedPosts
+            postId={post.id}
+            groupId={post.groupId || undefined}
+            userId={post.user.id}
+          />
         </div>
       </Card>
 
