@@ -96,6 +96,38 @@ export default function PostCard({ post }: PostCardProps) {
 
       return res.json();
     },
+    onMutate: async (newData) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
+      if (post.user.id) {
+        await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
+      }
+
+      const previousPosts = queryClient.getQueryData(["/api/posts"]);
+      const previousUserPosts = queryClient.getQueryData([`/api/posts/user/${post.user.id}`]);
+
+      // Update the post in the cache
+      const updatePostInCache = (posts: any[]) => {
+        return posts.map(p => {
+          if (p.id === post.id) {
+            return {
+              ...p,
+              content: newData.content,
+              privacy: newData.privacy,
+            };
+          }
+          return p;
+        });
+      };
+
+      if (previousPosts) {
+        queryClient.setQueryData(["/api/posts"], updatePostInCache(previousPosts));
+      }
+      if (previousUserPosts) {
+        queryClient.setQueryData([`/api/posts/user/${post.user.id}`], updatePostInCache(previousUserPosts));
+      }
+
+      return { previousPosts, previousUserPosts };
+    },
     onSuccess: () => {
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
@@ -107,7 +139,13 @@ export default function PostCard({ post }: PostCardProps) {
         description: "Post updated successfully",
       });
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      if (context) {
+        queryClient.setQueryData(["/api/posts"], context.previousPosts);
+        if (post.user.id) {
+          queryClient.setQueryData([`/api/posts/user/${post.user.id}`], context.previousUserPosts);
+        }
+      }
       toast({
         variant: "destructive",
         title: "Error",
