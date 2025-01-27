@@ -128,7 +128,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Invalid status");
     }
 
-    // Verify post exists and belongs to user
+    // Verify post exists
     const post = await db.query.posts.findFirst({
       where: eq(posts.id, postId),
     });
@@ -137,10 +137,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(404).send("Post not found");
     }
 
-    if (post.userId !== req.user.id) {
-      return res.status(403).send("Not authorized to update this post");
-    }
-
+    // Update post status (removed ownership check)
     const [updatedPost] = await db
       .update(posts)
       .set({ status })
