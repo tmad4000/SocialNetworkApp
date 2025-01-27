@@ -139,34 +139,39 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  // Helper function to check for @ pattern and update suggestions
+  const checkForMentionPattern = (text: string) => {
+    const match = text.match(/@(\w*)$/);
+    if (match) {
+      const query = match[1];
+      const filtered = users.filter((user) =>
+        user.username.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredUsers(filtered);
+      setShowSuggestions(filtered.length > 0);
+      setSelectedIndex(0);
+
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        const editorElement = editor.getRootElement();
+        if (editorElement) {
+          const editorRect = editorElement.getBoundingClientRect();
+          setMentionPosition({
+            top: rect.bottom - editorRect.top,
+            left: rect.left - editorRect.left,
+          });
+        }
+      }
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
   useEffect(() => {
     const removeListener = editor.registerTextContentListener((text) => {
-      const match = text.match(/@(\w*)$/);
-      if (match) {
-        const query = match[1];
-        const filtered = users.filter((user) =>
-          user.username.toLowerCase().includes(query.toLowerCase())
-        );
-        setFilteredUsers(filtered);
-        setShowSuggestions(filtered.length > 0);
-        setSelectedIndex(0);
-
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          const editorElement = editor.getRootElement();
-          if (editorElement) {
-            const editorRect = editorElement.getBoundingClientRect();
-            setMentionPosition({
-              top: rect.bottom - editorRect.top,
-              left: rect.left - editorRect.left,
-            });
-          }
-        }
-      } else {
-        setShowSuggestions(false);
-      }
+      checkForMentionPattern(text);
     });
 
     return removeListener;
@@ -230,11 +235,17 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
           return true;
         }
 
+        // Check for @ pattern after backspace
+        editor.getEditorState().read(() => {
+          const text = firstNode.getTextContent();
+          checkForMentionPattern(text);
+        });
+
         return false;
       },
       COMMAND_PRIORITY_CRITICAL,
     );
-  }, [editor]);
+  }, [editor, users]);
 
   const insertMention = (username: string) => {
     editor.update(() => {
