@@ -8,7 +8,8 @@ import type { Status } from "@/components/ui/status-pill";
 import LikeButton from "@/components/ui/like-button";
 import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight } from "lucide-react";
+import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight, QrCode } from "lucide-react";
+import FollowButton from "@/components/ui/follow-button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -19,7 +20,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
@@ -43,6 +51,7 @@ interface PostCardProps {
 export default function PostCard({ post }: PostCardProps) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
   const { user: currentUser } = useUser();
   const { toast } = useToast();
@@ -51,6 +60,11 @@ export default function PostCard({ post }: PostCardProps) {
   const { data: commentCount } = useQuery<{ count: number }>({
     queryKey: [`/api/posts/${post.id}/comments/count`],
     enabled: !isCommentsOpen,
+  });
+
+  const { data: qrCode } = useQuery({
+    queryKey: [`/api/posts/${post.id}/qr`],
+    enabled: isQrDialogOpen,
   });
 
   const { data: users } = useQuery<User[]>({
@@ -201,43 +215,43 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center gap-4 space-y-0">
-        <Link href={`/profile/${post.user.id}`}>
-          <Avatar className="h-10 w-10 cursor-pointer">
-            <AvatarImage src={post.user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${post.user.username}`} />
-            <AvatarFallback>{post.user.username[0]}</AvatarFallback>
-          </Avatar>
-        </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <Link href={`/profile/${post.user.id}`}>
-              <span className="text-muted-foreground hover:underline cursor-pointer">
-                {post.user.username}
-              </span>
-            </Link>
-            {post.group && (
-              <>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                <Link href={`/groups/${post.group.id}`}>
-                  <span className="font-semibold text-primary hover:underline cursor-pointer">
-                    {post.group.name}
-                  </span>
-                </Link>
-              </>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href={`/post/${post.id}`}>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <LinkIcon className="h-4 w-4" />
-            </Button>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-4 space-y-0">
+          <Link href={`/profile/${post.user.id}`}>
+            <Avatar className="h-10 w-10 cursor-pointer">
+              <AvatarImage src={post.user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${post.user.username}`} />
+              <AvatarFallback>{post.user.username[0]}</AvatarFallback>
+            </Avatar>
           </Link>
-          {isOwner && (
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <Link href={`/profile/${post.user.id}`}>
+                <span className="text-muted-foreground hover:underline cursor-pointer">
+                  {post.user.username}
+                </span>
+              </Link>
+              {post.group && (
+                <>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <Link href={`/groups/${post.group.id}`}>
+                    <span className="font-semibold text-primary hover:underline cursor-pointer">
+                      {post.group.name}
+                    </span>
+                  </Link>
+                </>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {formatDistanceToNow(new Date(post.createdAt!), { addSuffix: true })}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href={`/post/${post.id}`}>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <LinkIcon className="h-4 w-4" />
+              </Button>
+            </Link>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -245,80 +259,103 @@ export default function PostCard({ post }: PostCardProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setIsEditing(true)}>
-                  Edit
+                <DropdownMenuItem onClick={() => setIsQrDialogOpen(true)}>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Show QR Code
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => deletePost.mutate()}
-                >
-                  Delete
-                </DropdownMenuItem>
+                {isOwner && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => deletePost.mutate()}
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
-          <StatusPill status={post.status as Status} postId={post.id} />
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isEditing ? (
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            <LexicalEditor
-              onChange={setEditedContent}
-              users={users || []}
-              initialState={createInitialState()}
-              onSubmit={handleSaveEdit}
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <Button
-                type="submit"
-                disabled={!editedContent.trim() || editPost.isPending}
-              >
-                Save
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
-        )}
-      </CardContent>
-      <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
-        <CardFooter className="flex-col gap-4">
-          <div className="w-full flex items-center gap-4">
-            <LikeButton
-              postId={post.id}
-              initialLiked={post.liked}
-              initialLikeCount={post.likeCount}
-            />
-            <StarButton
-              postId={post.id}
-              initialStarred={post.starred}
-            />
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <MessageSquare className="h-4 w-4" />
-                <span className="text-muted-foreground">
-                  {commentCount?.count || 0}
-                </span>
-              </Button>
-            </CollapsibleTrigger>
+            <StatusPill status={post.status as Status} postId={post.id} />
           </div>
-          <CollapsibleContent className="w-full -mx-6">
-            <CommentSection postId={post.id} />
-          </CollapsibleContent>
-        </CardFooter>
-      </Collapsible>
-      <div className="border-t">
-        <RelatedPosts postId={post.id} />
-      </div>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          {isEditing ? (
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <LexicalEditor
+                onChange={setEditedContent}
+                users={users || []}
+                initialState={createInitialState()}
+                onSubmit={handleSaveEdit}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="submit"
+                  disabled={!editedContent.trim() || editPost.isPending}
+                >
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <p className="whitespace-pre-wrap">{renderContent(post.content)}</p>
+          )}
+        </CardContent>
+        <Collapsible open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
+          <CardFooter className="flex-col gap-4">
+            <div className="w-full flex items-center gap-4">
+              <LikeButton
+                postId={post.id}
+                initialLiked={post.liked}
+                initialLikeCount={post.likeCount}
+              />
+              <StarButton
+                postId={post.id}
+                initialStarred={post.starred}
+              />
+              <FollowButton postId={post.id} />
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-muted-foreground">
+                    {commentCount?.count || 0}
+                  </span>
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent className="w-full -mx-6">
+              <CommentSection postId={post.id} />
+            </CollapsibleContent>
+          </CardFooter>
+        </Collapsible>
+        <div className="border-t">
+          <RelatedPosts postId={post.id} />
+        </div>
+      </Card>
+
+      <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Post QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-center p-4">
+            {qrCode?.qrCode && (
+              <img src={qrCode.qrCode} alt="Post QR Code" className="max-w-full h-auto" />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
