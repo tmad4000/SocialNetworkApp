@@ -1,4 +1,4 @@
-import { Star, StarOff } from "lucide-react";
+import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -61,11 +61,11 @@ export default function StarButton({
       onClick={() => toggleStar.mutate()}
       disabled={toggleStar.isPending}
     >
-      {initialStarred ? (
-        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-      ) : (
-        <StarOff className="h-4 w-4" />
-      )}
+      <Star 
+        className={`h-4 w-4 ${
+          initialStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
+        }`}
+      />
       <span className="text-muted-foreground">{initialStarCount}</span>
     </Button>
   );
