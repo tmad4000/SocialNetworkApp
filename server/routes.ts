@@ -627,13 +627,67 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
+      // First check if user exists and get their profile info
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+      });
+
+      if (!user) {
+        return res.status(404).send("User not found");
+      }
+
       // Get the user's embeddings
       const userEmbedding = await db.query.userEmbeddings.findFirst({
         where: eq(userEmbeddings.userId, userId),
       });
 
+      // If user has no embeddings, check if they have bio or lookingFor
       if (!userEmbedding || (!userEmbedding.bioEmbedding && !userEmbedding.lookingForEmbedding)) {
-        return res.status(404).send("No embeddings found for user");
+        if (!user.bio && !user.lookingFor) {
+          return res.status(404).json({
+            message: "No matches available. Add a bio or 'looking for' section to your profile to find matches.",
+            reason: "no_profile_info"
+          });
+        }
+
+        // They have profile info but no embeddings, generate them
+        let bioEmbedding = null;
+        let lookingForEmbedding = null;
+
+        if (user.bio?.trim()) {
+          bioEmbedding = await generateEmbedding(user.bio);
+        }
+        if (user.lookingFor?.trim()) {
+          lookingForEmbedding = await generateEmbedding(user.lookingFor);
+        }
+
+        // Store the embeddings
+        await db
+          .insert(userEmbeddings)
+          .values({
+            userId,
+            bioEmbedding,
+            lookingForEmbedding,
+          })
+          .onConflictDoUpdate({
+            target: [userEmbeddings.userId],
+            set: { bioEmbedding, lookingForEmbedding },
+          });
+
+        // Fetch the newly created embedding
+        const newUserEmbedding = await db.query.userEmbeddings.findFirst({
+          where: eq(userEmbeddings.userId, userId),
+        });
+
+        if (!newUserEmbedding || (!newUserEmbedding.bioEmbedding && !newUserEmbedding.lookingForEmbedding)) {
+          return res.status(500).json({
+            message: "Error generating embeddings for your profile",
+            reason: "embedding_generation_failed"
+          });
+        }
+
+        // Continue with the new embedding
+        userEmbedding = newUserEmbedding;
       }
 
       // Get all other users' embeddings
@@ -687,7 +741,18 @@ export function registerRoutes(app: Express): Server {
         .sort((a, b) => b.matchScore - a.matchScore) // Sort by score descending
         .slice(0, 5); // Get top 5 matches
 
-      res.json(matches);
+      // If no matches found after all calculations
+      if (matches.length === 0) {
+        return res.json({
+          message: "No matches found. Try updating your profile to find better matches.",
+          matches: []
+        });
+      }
+
+      res.json({
+        message: "Matches found based on your profile",
+        matches
+      });
     } catch (error) {
       console.error('Error finding matches:', error);
       res.status(500).send("Error finding matches");

@@ -42,10 +42,10 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// User embeddings table
+// Update user embeddings table with proper unique constraint
 export const userEmbeddings = pgTable("user_embeddings", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull().unique(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
   bioEmbedding: jsonb("bio_embedding"),
   lookingForEmbedding: jsonb("looking_for_embedding"),
   updatedAt: timestamp("updated_at").defaultNow(),
