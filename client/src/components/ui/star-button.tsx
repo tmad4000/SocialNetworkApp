@@ -29,30 +29,40 @@ export default function StarButton({
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       await queryClient.cancelQueries({ queryKey: [`/api/posts/${postId}`] });
+      await queryClient.cancelQueries({ queryKey: [`/api/posts/user`] });
 
-      // Snapshot the previous value
+      // Snapshot the previous values
+      const previousPost = queryClient.getQueryData([`/api/posts/${postId}`]);
       const previousPosts = queryClient.getQueryData(["/api/posts"]);
+      const previousUserPosts = queryClient.getQueryData(["/api/posts/user"]);
 
-      // Optimistically update all relevant queries
-      queryClient.setQueryData(["/api/posts"], (old: any[]) => 
-        old?.map(post => 
-          post.id === postId 
-            ? { ...post, starred: !post.starred }
-            : post
-        )
+      // Optimistically update
+      const updatePost = (post: any) => 
+        post?.id === postId 
+          ? { ...post, starred: !initialStarred }
+          : post;
+
+      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => 
+        updatePost(old)
       );
 
-      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
-        ...old,
-        starred: !initialStarred,
-      }));
+      queryClient.setQueryData(["/api/posts"], (old: any[]) => 
+        old?.map(updatePost)
+      );
 
-      return { previousPosts };
+      queryClient.setQueryData(["/api/posts/user"], (old: any[]) => 
+        old?.map(updatePost)
+      );
+
+      return { previousPost, previousPosts, previousUserPosts };
     },
     onError: (error, _, context) => {
-      // Revert optimistic update on error
-      queryClient.setQueryData(["/api/posts"], context?.previousPosts);
-      queryClient.setQueryData([`/api/posts/${postId}`], context?.previousPosts);
+      // Revert optimistic updates
+      if (context) {
+        queryClient.setQueryData([`/api/posts/${postId}`], context.previousPost);
+        queryClient.setQueryData(["/api/posts"], context.previousPosts);
+        queryClient.setQueryData(["/api/posts/user"], context.previousUserPosts);
+      }
 
       toast({
         variant: "destructive",
@@ -61,19 +71,30 @@ export default function StarButton({
       });
     },
     onSuccess: (data) => {
-      // Update queries with the actual server response
-      queryClient.setQueryData(["/api/posts"], (old: any[]) =>
-        old?.map(post =>
-          post.id === postId
-            ? { ...post, starred: data.starred }
-            : post
-        )
+      // Update all relevant queries with the server response
+      const updatePost = (post: any) =>
+        post?.id === postId
+          ? { ...post, starred: data.starred }
+          : post;
+
+      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => 
+        updatePost(old)
       );
 
-      queryClient.setQueryData([`/api/posts/${postId}`], (old: any) => ({
-        ...old,
-        starred: data.starred,
-      }));
+      queryClient.setQueryData(["/api/posts"], (old: any[]) =>
+        old?.map(updatePost)
+      );
+
+      queryClient.setQueryData(["/api/posts/user"], (old: any[]) =>
+        old?.map(updatePost)
+      );
+
+      toast({
+        title: data.starred ? "Added to best ideas" : "Removed from best ideas",
+        description: data.starred 
+          ? "This post has been marked as a best idea"
+          : "This post has been removed from best ideas",
+      });
     },
   });
 

@@ -1023,7 +1023,7 @@ export function registerRoutes(app: Express): Server {
   // Get group posts
   app.get("/api/groups/:id/posts", async (req, res) => {
     const groupId = parseInt(req.params.id);
-    if (isNaN(groupId)) {      return res.status(400).send("Invalid group ID");
+    if(isNaN(groupId)) {      return res.status(400).send("Invalid group ID");
     }
 
     try {
@@ -1928,17 +1928,15 @@ export function registerRoutes(app: Express): Server {
   });
 
   app.post("/api/posts/:id/star", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
     try {
-      console.log(`Attempting to toggle star for post ${postId}`);
+      if (!req.user) {
+        return res.status(401).send("Not authenticated");
+      }
+
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) {
+        return res.status(400).send("Invalid post ID");
+      }
 
       // Get current post
       const post = await db.query.posts.findFirst({
@@ -1946,11 +1944,13 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (!post) {
-        console.log(`Post ${postId} not found`);
         return res.status(404).send("Post not found");
       }
 
-      console.log(`Current star status: ${post.starred}, toggling to: ${!post.starred}`);
+      // Only allow users to star their own posts
+      if (post.userId !== req.user.id) {
+        return res.status(403).send("You can only star your own posts");
+      }
 
       // Toggle starred status
       const [updatedPost] = await db
@@ -1958,8 +1958,6 @@ export function registerRoutes(app: Express): Server {
         .set({ starred: !post.starred })
         .where(eq(posts.id, postId))
         .returning();
-
-      console.log(`Successfully updated post ${postId}, new star status: ${updatedPost.starred}`);
 
       res.json({ starred: updatedPost.starred });
     } catch (error) {
