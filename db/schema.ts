@@ -51,7 +51,7 @@ export const userEmbeddings = pgTable("user_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Update posts table to include optional groupId and starred field
+// Update posts table to include privacy field
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -60,6 +60,7 @@ export const posts = pgTable("posts", {
   status: text("status").notNull().default('none'),
   starred: boolean("starred").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  privacy: text("privacy").notNull().default('public'),  // 'private', 'friends', 'public'
 });
 
 // New table for post embeddings

@@ -4,8 +4,10 @@ import PostCard from "@/components/post-card";
 import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
-import type { Post, User, PostMention, Group } from "@db/schema";
+import type { Post, User, PostMention, Group, Friend } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
+import { useUser } from "@/hooks/use-user";
+import { useFriends } from "@/hooks/use-friends";
 
 interface PostFeedProps {
   userId?: number;
@@ -27,12 +29,13 @@ type PostWithDetails = Post & {
   likeCount: number;
   liked: boolean;
   starred: boolean;
+  privacy: string;
 };
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
-export default function PostFeed({ 
-  userId, 
+export default function PostFeed({
+  userId,
   groupId,
   searchQuery: externalSearchQuery,
   showStatusOnly: externalShowStatusOnly,
@@ -43,7 +46,8 @@ export default function PostFeed({
   onStarredOnlyChange,
   onStatusesChange,
 }: PostFeedProps) {
-  // Internal state for uncontrolled mode
+  const { user: currentUser } = useUser();
+  const { data: friends } = useFriends();
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalShowStatusOnly, setInternalShowStatusOnly] = useState(false);
   const [internalShowStarredOnly, setInternalShowStarredOnly] = useState(false);
@@ -51,13 +55,11 @@ export default function PostFeed({
     STATUSES.filter(status => status !== 'none')
   );
 
-  // Use external or internal state based on whether props are provided
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
   const showStatusOnly = externalShowStatusOnly ?? internalShowStatusOnly;
   const showStarredOnly = externalShowStarredOnly ?? internalShowStarredOnly;
   const selectedStatuses = externalSelectedStatuses ?? internalSelectedStatuses;
 
-  // Handlers that update either external or internal state
   const handleSearchChange = (query: string) => {
     if (onSearchChange) {
       onSearchChange(query);
@@ -92,41 +94,52 @@ export default function PostFeed({
 
   const { data: posts, isInitialLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
-    staleTime: 5000, // Consider data fresh for 5 seconds
+    staleTime: 5000,
   });
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    // Always sort by createdAt first
-    let sorted = [...posts].sort((a, b) => 
+    let sorted = [...posts].sort((a, b) =>
       new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
     );
 
-    // Apply starred filter if enabled
+    sorted = sorted.filter(post => {
+      if (post.groupId) return true;
+      if (post.user.id === currentUser?.id) return true;
+      if (post.privacy === 'public') return true;
+      if (post.privacy === 'private') return post.user.id === currentUser?.id;
+      if (post.privacy === 'friends') {
+        const isFriend = friends?.some(f =>
+          (f.userId === currentUser?.id && f.friendId === post.user.id ||
+            f.userId === post.user.id && f.friendId === currentUser?.id) &&
+          f.status === 'accepted'
+        );
+        return isFriend;
+      }
+      return false;
+    });
+
+
     if (showStarredOnly) {
       sorted = sorted.filter(post => post.starred);
-    }
-    // Then apply status filter if enabled
-    else if (showStatusOnly && selectedStatuses.length > 0) {
+    } else if (showStatusOnly && selectedStatuses.length > 0) {
       sorted = sorted.filter(post => selectedStatuses.includes(post.status as Status));
     }
 
-    // Finally apply search filter if there's a search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      sorted = sorted.filter(post => 
+      sorted = sorted.filter(post =>
         post.content.toLowerCase().includes(query) ||
-        post.mentions.some(mention => 
+        post.mentions.some(mention =>
           mention.mentionedUser.username.toLowerCase().includes(query)
         )
       );
     }
 
     return sorted;
-  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly, currentUser, friends]);
 
-  // Calculate status counts from all posts
   const statusCounts = useMemo(() => {
     if (!posts) return {} as Record<Status, number>;
     return posts.reduce((acc: Record<Status, number>, post) => {
@@ -136,7 +149,6 @@ export default function PostFeed({
     }, {} as Record<Status, number>);
   }, [posts]);
 
-  // Only show filter bar if not being controlled by parent
   const showFilterBar = !externalSearchQuery && !externalShowStatusOnly && !externalShowStarredOnly;
 
   if (isInitialLoading) {
@@ -160,7 +172,7 @@ export default function PostFeed({
               className="pl-10"
             />
           </div>
-          <PostFilter 
+          <PostFilter
             showStatusOnly={showStatusOnly}
             onFilterChange={handleStatusOnlyChange}
             selectedStatuses={selectedStatuses}

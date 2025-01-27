@@ -2,26 +2,39 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import type { Post } from "@db/schema";
+import type { Post, User } from "@db/schema";
 import PostCard from "./post-card";
 
 interface RelatedPostsProps {
   postId: number;
 }
 
-type RelatedPost = Post & {
+interface RelatedPost extends Post {
   user: {
     id: number;
     username: string;
     avatar: string | null;
+    bio: string | null;
+    linkedinUrl: string | null;
+    lookingFor: string | null;
+    phone: string | null;
+    email: string | null;
+    createdAt: Date | null;
+    password: string;
   };
   similarity: number;
   likeCount: number;
   liked: boolean;
   starCount: number;
   starred: boolean;
-  mentions: { mentionedUser: { id: number; username: string; avatar: string | null; } }[];
-};
+  mentions: Array<{
+    mentionedUser: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
+  }>;
+}
 
 export default function RelatedPosts({ postId }: RelatedPostsProps) {
   const [isOpen, setIsOpen] = useState(false);
