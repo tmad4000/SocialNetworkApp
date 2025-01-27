@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import type { Post, User } from "@db/schema";
+import type { Post } from "@db/schema";
 import PostCard from "./post-card";
 
 interface RelatedPostsProps {
@@ -26,21 +26,22 @@ interface RelatedPostsProps {
   userId?: number;
 }
 
-interface PostMention {
-  id: number;
-  createdAt: Date | null;
-  postId: number;
-  mentionedUserId: number;
-  mentionedUser: {
+interface PostWithDetails extends Post {
+  user: {
     id: number;
     username: string;
     avatar: string | null;
   };
-}
-
-interface RelatedPost extends Post {
-  user: User;
-  mentions: PostMention[];
+  mentions: Array<{
+    id: number;
+    postId: number;
+    mentionedUserId: number;
+    mentionedUser: {
+      id: number;
+      username: string;
+      avatar: string | null;
+    };
+  }>;
   similarity: number;
   likeCount: number;
   liked: boolean;
@@ -54,37 +55,30 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: relatedPosts, isLoading: relatedLoading } = useQuery<RelatedPost[]>({
+  const { data: relatedPosts, isLoading: relatedLoading } = useQuery<PostWithDetails[]>({
     queryKey: [`/api/posts/${postId}/related`],
-    enabled: true,
+    enabled: !!postId,
   });
 
-  const { data: allPosts, isLoading: allPostsLoading } = useQuery<Post[]>({
+  const { data: allPosts, isLoading: allPostsLoading } = useQuery<PostWithDetails[]>({
     queryKey: ["/api/posts"],
-    enabled: true,
+    enabled: !!postId,
   });
 
   const addRelatedPost = useMutation({
     mutationFn: async (relatedPostId: number) => {
-      try {
-        const res = await fetch(`/api/posts/${postId}/related`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ relatedPostId }),
-          credentials: "include",
-        });
+      const res = await fetch(`/api/posts/${postId}/related`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relatedPostId }),
+        credentials: "include",
+      });
 
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText);
-        }
-
-        return res.json();
-      } catch (error: any) {
-        throw new Error(error.message || "Failed to add related post");
+      if (!res.ok) {
+        throw new Error(await res.text());
       }
+
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/posts/${postId}/related`] });
@@ -99,36 +93,25 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to add related post",
+        description: error.message,
       });
     },
   });
 
   const createRelatedPost = useMutation({
     mutationFn: async (content: string) => {
-      try {
-        const res = await fetch("/api/posts", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ 
-            content,
-            groupId,
-            userId,
-          }),
-          credentials: "include",
-        });
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, groupId, userId }),
+        credentials: "include",
+      });
 
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText);
-        }
-
-        return res.json();
-      } catch (error: any) {
-        throw new Error(error.message || "Failed to create related post");
+      if (!res.ok) {
+        throw new Error(await res.text());
       }
+
+      return res.json();
     },
     onSuccess: (data) => {
       addRelatedPost.mutate(data.id);
@@ -138,7 +121,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to create related post",
+        description: error.message,
       });
     },
   });
@@ -148,7 +131,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     post.content.toLowerCase().includes(searchText.toLowerCase())
   ) || [];
 
-  if (allPostsLoading) {
+  if (relatedLoading || allPostsLoading) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -209,19 +192,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                           </span>
                         </CommandItem>
                       ))}
-                      {searchText && filteredPosts.length > 0 && (
-                        <CommandItem
-                          className="bg-primary/5 text-primary font-medium border-t"
-                          onSelect={() => {
-                            if (searchText.trim()) {
-                              createRelatedPost.mutate(searchText);
-                            }
-                          }}
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          <span>+ Create new related post "{searchText}"</span>
-                        </CommandItem>
-                      )}
                     </ScrollArea>
                   </CommandGroup>
                 </CommandList>
@@ -232,13 +202,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
         <div>
           <h3 className="text-sm font-medium mb-2">Suggested Related Posts</h3>
-          {relatedLoading ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <p>Processing related posts...</p>
-              <p className="text-sm">This might take a moment while we analyze content similarities</p>
-            </div>
-          ) : !relatedPosts?.length ? (
+          {!relatedPosts?.length ? (
             <div className="text-center text-muted-foreground py-4">
               No suggested posts found
             </div>
@@ -256,18 +220,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                       </span>
                     </div>
                   </div>
-                  <PostCard
-                    post={{
-                      ...post,
-                      mentions: post.mentions.map(mention => ({
-                        id: mention.id,
-                        createdAt: mention.createdAt,
-                        postId: mention.postId,
-                        mentionedUserId: mention.mentionedUser.id,
-                        mentionedUser: mention.mentionedUser
-                      }))
-                    }}
-                  />
+                  <PostCard post={post} />
                 </div>
               ))}
             </div>
