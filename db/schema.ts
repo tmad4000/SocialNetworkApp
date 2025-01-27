@@ -2,6 +2,14 @@ import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizz
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
 
+// Add postFollowers table
+export const postFollowers = pgTable("post_followers", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Add groups table
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
@@ -20,6 +28,7 @@ export const groupMembers = pgTable("group_members", {
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
+// Update users table to include phone and email
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
@@ -28,6 +37,8 @@ export const users = pgTable("users", {
   bio: text("bio"),
   linkedinUrl: text("linkedin_url"),
   lookingFor: text("looking_for"),
+  phone: text("phone"),
+  email: text("email"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -112,6 +123,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   groupMemberships: many(groupMembers),
 }));
 
+// Update postsRelations to include followers
 export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, {
     fields: [posts.userId],
@@ -125,6 +137,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   mentions: many(postMentions),
   likes: many(postLikes),
   embedding: one(postEmbeddings),
+  followers: many(postFollowers),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -220,6 +233,18 @@ export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
   }),
 }));
 
+// Add relations for postFollowers
+export const postFollowersRelations = relations(postFollowers, ({ one }) => ({
+  post: one(posts, {
+    fields: [postFollowers.postId],
+    references: [posts.id],
+  }),
+  user: one(users, {
+    fields: [postFollowers.userId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export type NewUser = typeof users.$inferInsert;
@@ -274,3 +299,9 @@ export const insertGroupMemberSchema = createInsertSchema(groupMembers);
 export const selectGroupMemberSchema = createSelectSchema(groupMembers);
 export type GroupMember = typeof groupMembers.$inferSelect;
 export type NewGroupMember = typeof groupMembers.$inferInsert;
+
+// Add schemas for post followers
+export const insertPostFollowerSchema = createInsertSchema(postFollowers);
+export const selectPostFollowerSchema = createSelectSchema(postFollowers);
+export type PostFollower = typeof postFollowers.$inferSelect;
+export type NewPostFollower = typeof postFollowers.$inferInsert;
