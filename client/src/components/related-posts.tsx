@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, Plus, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Input } from "@/components/ui/input";
 import {
   Command,
   CommandEmpty,
@@ -11,11 +10,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -28,20 +22,20 @@ interface RelatedPostsProps {
   userId?: number;
 }
 
-interface RelatedPost extends Post {
+type RelatedPost = Post & {
   user: User;
-  mentions: Array<PostMention & { mentionedUser: User }>;
+  mentions: (PostMention & { mentionedUser: User })[];
+  group?: Group;
   similarity: number;
   likeCount: number;
   liked: boolean;
   starred: boolean;
   privacy: string;
-}
+};
 
 export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number, content: string }>>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -86,7 +80,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
         description: "Related post added successfully",
       });
       setSearchText("");
-      setIsPopoverOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -137,34 +130,31 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                 {/* Manual Related Posts Section */}
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium text-muted-foreground">Related Posts</h4>
-                  <Command className="border rounded-md">
+                  <Command className="rounded-lg border shadow-md">
                     <CommandInput
                       placeholder="Search for a post..."
                       value={searchText}
                       onValueChange={setSearchText}
-                      className="border-none focus:ring-0"
                     />
-                    {searchText && (
-                      <CommandList>
-                        <CommandEmpty>No posts found</CommandEmpty>
-                        <CommandGroup>
-                          <ScrollArea className="h-[200px]">
-                            {filteredPosts.map(post => (
-                              <CommandItem
-                                key={post.id}
-                                onSelect={() => {
-                                  addRelatedPost.mutate(post.id);
-                                }}
-                              >
-                                <span className="truncate">
-                                  {post.content.substring(0, 50)}...
-                                </span>
-                              </CommandItem>
-                            ))}
-                          </ScrollArea>
-                        </CommandGroup>
-                      </CommandList>
-                    )}
+                    <CommandList>
+                      <CommandEmpty>No posts found</CommandEmpty>
+                      <CommandGroup>
+                        <ScrollArea className="h-[200px]">
+                          {filteredPosts.map(post => (
+                            <CommandItem
+                              key={post.id}
+                              onSelect={() => {
+                                addRelatedPost.mutate(post.id);
+                              }}
+                            >
+                              <span className="truncate">
+                                {post.content.substring(0, 50)}...
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </ScrollArea>
+                      </CommandGroup>
+                    </CommandList>
                   </Command>
 
                   <div className="flex flex-wrap gap-2">
