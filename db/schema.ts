@@ -63,10 +63,10 @@ export const posts = pgTable("posts", {
   privacy: text("privacy").notNull().default('public'),  // 'private', 'friends', 'public'
 });
 
-// New table for post embeddings
+// Update postEmbeddings table definition to include onDelete cascade
 export const postEmbeddings = pgTable("post_embeddings", {
   id: serial("id").primaryKey(),
-  postId: integer("post_id").references(() => posts.id).notNull().unique(),
+  postId: integer("post_id").references(() => posts.id, { onDelete: 'cascade' }).notNull().unique(),
   embedding: jsonb("embedding").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
