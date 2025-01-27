@@ -88,25 +88,31 @@ export default function PostCard({ post }: PostCardProps) {
 
   const editPost = useMutation({
     mutationFn: async (data: { content?: string; privacy?: string }) => {
-      const updateData: Record<string, string> = {};
-      if (data.content !== undefined) updateData.content = data.content;
-      if (data.privacy !== undefined) updateData.privacy = data.privacy;
+      console.log('Updating post with data:', data); // Debug log
+
+      const requestBody = {
+        content: data.content || post.content, // Always include content
+        privacy: data.privacy || post.privacy, // Always include privacy
+      };
+
+      console.log('Request body:', requestBody); // Debug log
 
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...updateData,
-          content: updateData.content || post.content // Always include content
-        }),
+        body: JSON.stringify(requestBody),
         credentials: "include",
       });
 
       if (!res.ok) {
-        throw new Error(await res.text());
+        const errorText = await res.text();
+        console.error('Error updating post:', errorText); // Debug log
+        throw new Error(errorText);
       }
 
-      return res.json();
+      const responseData = await res.json();
+      console.log('Server response:', responseData); // Debug log
+      return responseData;
     },
     onMutate: async (newData) => {
       // Cancel any outgoing refetches
@@ -125,7 +131,7 @@ export default function PostCard({ post }: PostCardProps) {
         groupPosts: post.groupId ? queryClient.getQueryData<any[]>([`/api/groups/${post.groupId}/posts`]) : undefined
       };
 
-      // Optimistically update all queries with the new data
+      // Update all queries optimistically
       const updatePostInCache = (oldPosts: any[] = []) => {
         return oldPosts.map(p => {
           if (p.id === post.id) {
@@ -152,8 +158,9 @@ export default function PostCard({ post }: PostCardProps) {
       return previousData;
     },
     onSuccess: (data) => {
-      setIsEditing(false);
-      // Instead of invalidating, update the cache with the returned data
+      console.log('Mutation succeeded with data:', data); // Debug log
+
+      // Update all queries with the returned data
       const updateQueries = [
         { queryKey: ["/api/posts"] },
         post.user.id ? { queryKey: [`/api/posts/user/${post.user.id}`] } : null,
@@ -162,6 +169,7 @@ export default function PostCard({ post }: PostCardProps) {
 
       updateQueries.forEach(({ queryKey }) => {
         queryClient.setQueryData(queryKey, (oldData: any[] = []) => {
+          if (!oldData) return oldData;
           return oldData.map(p => p.id === post.id ? { ...p, ...data } : p);
         });
       });
@@ -172,6 +180,8 @@ export default function PostCard({ post }: PostCardProps) {
       });
     },
     onError: (error, _, context) => {
+      console.error('Mutation error:', error); // Debug log
+
       // Revert all optimistic updates
       if (context?.posts) {
         queryClient.setQueryData(["/api/posts"], context.posts);
@@ -233,10 +243,11 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   const handlePrivacyChange = (newPrivacy: string) => {
+    console.log('Changing privacy to:', newPrivacy); // Debug log
     setEditedPrivacy(newPrivacy);
     editPost.mutate({
       privacy: newPrivacy,
-      content: post.content
+      content: post.content // Always include current content
     });
   };
 
