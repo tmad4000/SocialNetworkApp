@@ -9,15 +9,24 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Users, Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
+import PostCard from "@/components/post-card";
+import CreatePost from "@/components/create-post";
+import PostFilter from "@/components/ui/post-filter";
+import PostFeed from "@/components/post-feed";
 import { useToast } from "@/hooks/use-toast";
-import type { Group, User } from "@db/schema";
+import type { Group, User, Post } from "@db/schema";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
+const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
 export default function GroupPage() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showStatusOnly, setShowStatusOnly] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
+    STATUSES.filter(status => status !== 'none')
+  );
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -220,6 +229,43 @@ export default function GroupPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="space-y-6">
+        <Separator className="my-8" />
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">Posts</h2>
+          <div className="flex items-center gap-4">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search posts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <PostFilter
+              showStatusOnly={showStatusOnly}
+              onFilterChange={setShowStatusOnly}
+              selectedStatuses={selectedStatuses}
+              onStatusesChange={setSelectedStatuses}
+              statusCounts={{}}
+            />
+          </div>
+        </div>
+
+        {group.isMember && (
+          <CreatePost
+            groupId={group.id}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}/posts`] });
+              queryClient.invalidateQueries({ queryKey: [`/api/groups/${params?.id}`] });
+            }}
+          />
+        )}
+
+        <PostFeed groupId={group.id} />
+      </div>
     </div>
   );
 }
