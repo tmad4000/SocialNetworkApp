@@ -301,7 +301,6 @@ export default function PostCard({ post }: PostCardProps) {
             <StarButton
               postId={post.id}
               initialStarred={post.starred}
-              initialStarCount={post.starCount}
             />
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-1.5">

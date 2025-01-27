@@ -78,6 +78,17 @@ export default function StarButton({
       // Ensure local state matches server state
       setIsStarred(data.starred);
 
+      // Invalidate all post queries to ensure correct filtering
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          String(query.queryKey[0]).startsWith("/api/posts/")
+      });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          String(query.queryKey[0]).startsWith("/api/groups/")
+      });
+
       toast({
         title: data.starred ? "Added to best ideas" : "Removed from best ideas",
         description: data.starred 
