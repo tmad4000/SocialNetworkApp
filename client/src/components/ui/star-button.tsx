@@ -2,6 +2,7 @@ import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect } from "react";
 
 interface StarButtonProps {
   postId: number;
@@ -14,6 +15,12 @@ export default function StarButton({
 }: StarButtonProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [isStarred, setIsStarred] = useState(initialStarred);
+
+  // Keep local state in sync with prop
+  useEffect(() => {
+    setIsStarred(initialStarred);
+  }, [initialStarred]);
 
   const toggleStar = useMutation({
     mutationFn: async () => {
@@ -26,43 +33,39 @@ export default function StarButton({
       return res.json();
     },
     onMutate: async () => {
-      // Cancel outgoing refetches
+      // Update local state immediately
+      setIsStarred(!isStarred);
+
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       await queryClient.cancelQueries({ queryKey: [`/api/posts/${postId}`] });
-      await queryClient.cancelQueries({ queryKey: ["/api/posts/user"] });
 
       // Snapshot the previous values
-      const previousPost = queryClient.getQueryData([`/api/posts/${postId}`]);
-      const previousPosts = queryClient.getQueryData(["/api/posts"]);
-      const previousUserPosts = queryClient.getQueryData(["/api/posts/user"]);
+      const previousData = {
+        posts: queryClient.getQueryData(["/api/posts"]),
+        post: queryClient.getQueryData([`/api/posts/${postId}`]),
+      };
 
-      // Optimistically update
-      const updatePost = (post: any) => 
-        post?.id === postId 
-          ? { ...post, starred: !initialStarred }
-          : post;
+      // Optimistically update queries
+      const updatePost = (post: any) =>
+        post?.id === postId ? { ...post, starred: !isStarred } : post;
 
-      const queries = [
-        ["/api/posts"],
-        [`/api/posts/${postId}`],
-        ["/api/posts/user"]
-      ];
+      queryClient.setQueryData(["/api/posts"], (old: any[] = []) =>
+        old.map(updatePost)
+      );
 
-      queries.forEach(queryKey => {
-        const isArray = queryKey[0] === "/api/posts" || queryKey[0] === "/api/posts/user";
-        queryClient.setQueryData(queryKey, (old: any) => 
-          isArray ? (old || []).map(updatePost) : updatePost(old)
-        );
-      });
+      queryClient.setQueryData([`/api/posts/${postId}`], updatePost);
 
-      return { previousPost, previousPosts, previousUserPosts };
+      return previousData;
     },
     onError: (error, _, context) => {
+      // Revert local state
+      setIsStarred(isStarred);
+
       // Revert optimistic updates
       if (context) {
-        queryClient.setQueryData([`/api/posts/${postId}`], context.previousPost);
-        queryClient.setQueryData(["/api/posts"], context.previousPosts);
-        queryClient.setQueryData(["/api/posts/user"], context.previousUserPosts);
+        queryClient.setQueryData(["/api/posts"], context.posts);
+        queryClient.setQueryData([`/api/posts/${postId}`], context.post);
       }
 
       toast({
@@ -72,24 +75,8 @@ export default function StarButton({
       });
     },
     onSuccess: (data) => {
-      // Update all relevant queries with the server response
-      const updatePost = (post: any) =>
-        post?.id === postId
-          ? { ...post, starred: data.starred }
-          : post;
-
-      const queries = [
-        ["/api/posts"],
-        [`/api/posts/${postId}`],
-        ["/api/posts/user"]
-      ];
-
-      queries.forEach(queryKey => {
-        const isArray = queryKey[0] === "/api/posts" || queryKey[0] === "/api/posts/user";
-        queryClient.setQueryData(queryKey, (old: any) => 
-          isArray ? (old || []).map(updatePost) : updatePost(old)
-        );
-      });
+      // Ensure local state matches server state
+      setIsStarred(data.starred);
 
       toast({
         title: data.starred ? "Added to best ideas" : "Removed from best ideas",
@@ -110,10 +97,10 @@ export default function StarButton({
     >
       <Star 
         className={`h-4 w-4 ${
-          initialStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
+          isStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
         }`}
       />
-      <span className="sr-only">{initialStarred ? 'Remove from best ideas' : 'Mark as best idea'}</span>
+      <span className="sr-only">{isStarred ? 'Remove from best ideas' : 'Mark as best idea'}</span>
     </Button>
   );
 }
