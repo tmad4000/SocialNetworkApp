@@ -26,15 +26,21 @@ interface RelatedPostsProps {
   userId?: number;
 }
 
+interface PostMention {
+  id: number;
+  createdAt: Date | null;
+  postId: number;
+  mentionedUserId: number;
+  mentionedUser: {
+    id: number;
+    username: string;
+    avatar: string | null;
+  };
+}
+
 interface RelatedPost extends Post {
   user: User;
-  mentions: Array<{
-    mentionedUser: {
-      id: number;
-      username: string;
-      avatar: string | null;
-    };
-  }>;
+  mentions: PostMention[];
   similarity: number;
   likeCount: number;
   liked: boolean;
@@ -53,7 +59,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     enabled: true,
   });
 
-  const { data: allPosts } = useQuery<Post[]>({
+  const { data: allPosts, isLoading: allPostsLoading } = useQuery<Post[]>({
     queryKey: ["/api/posts"],
     enabled: true,
   });
@@ -61,32 +67,22 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const addRelatedPost = useMutation({
     mutationFn: async (relatedPostId: number) => {
       try {
-        console.log('Adding related post:', relatedPostId); 
         const res = await fetch(`/api/posts/${postId}/related`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
-            "Accept": "application/json"
           },
           body: JSON.stringify({ relatedPostId }),
           credentials: "include",
         });
 
-        console.log('Response status:', res.status); 
-        const contentType = res.headers.get("content-type");
-        console.log('Content-Type:', contentType); 
-
         if (!res.ok) {
           const errorText = await res.text();
-          console.error('Error response:', errorText); 
           throw new Error(errorText);
         }
 
-        const data = await res.json();
-        console.log('Response data:', data); 
-        return data;
+        return res.json();
       } catch (error: any) {
-        console.error("Error adding related post:", error);
         throw new Error(error.message || "Failed to add related post");
       }
     },
@@ -100,7 +96,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       setIsOpen(false);
     },
     onError: (error: Error) => {
-      console.error("Mutation error:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -112,12 +107,10 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const createRelatedPost = useMutation({
     mutationFn: async (content: string) => {
       try {
-        console.log('Creating new post with content:', content); 
         const res = await fetch("/api/posts", {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
-            "Accept": "application/json"
           },
           body: JSON.stringify({ 
             content,
@@ -127,21 +120,13 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
           credentials: "include",
         });
 
-        console.log('Response status:', res.status); 
-        const contentType = res.headers.get("content-type");
-        console.log('Content-Type:', contentType); 
-
         if (!res.ok) {
           const errorText = await res.text();
-          console.error('Error response:', errorText); 
           throw new Error(errorText);
         }
 
-        const data = await res.json();
-        console.log('Response data:', data); 
-        return data;
+        return res.json();
       } catch (error: any) {
-        console.error("Error creating related post:", error);
         throw new Error(error.message || "Failed to create related post");
       }
     },
@@ -150,7 +135,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
     },
     onError: (error: Error) => {
-      console.error("Mutation error:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -163,6 +147,14 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     post.id !== postId && 
     post.content.toLowerCase().includes(searchText.toLowerCase())
   ) || [];
+
+  if (allPostsLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 px-6">
@@ -252,7 +244,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
             </div>
           ) : (
             <div className="space-y-6">
-              {relatedPosts?.map((post) => (
+              {relatedPosts.map((post) => (
                 <div key={post.id} className="opacity-80 hover:opacity-100 transition-opacity">
                   <div className="text-sm text-muted-foreground mb-2">
                     <div className="flex justify-between items-center">
@@ -264,7 +256,18 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                       </span>
                     </div>
                   </div>
-                  <PostCard post={post} />
+                  <PostCard
+                    post={{
+                      ...post,
+                      mentions: post.mentions.map(mention => ({
+                        id: mention.id,
+                        createdAt: mention.createdAt,
+                        postId: mention.postId,
+                        mentionedUserId: mention.mentionedUser.id,
+                        mentionedUser: mention.mentionedUser
+                      }))
+                    }}
+                  />
                 </div>
               ))}
             </div>
