@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, ChevronUp, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Command,
   CommandEmpty,
@@ -62,7 +63,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const [isOpen, setIsOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number, content: string }>>([]);
+  const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number; content: string }>>([]);
   const [selectedPostForModal, setSelectedPostForModal] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -77,7 +78,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     }
 
     function handleEscapeKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setIsCommandOpen(false);
         setSearchText("");
       }
@@ -116,7 +117,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     mutationFn: async (relatedPostId: number) => {
       const res = await fetch(`/api/posts/${postId}/related`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ relatedPostId }),
@@ -129,11 +130,11 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
       return res.json();
     },
-    onSuccess: (_, relatedPostId) => {
+    onSuccess: (_data: unknown, relatedPostId: number) => {
       queryClient.invalidateQueries({ queryKey: [`/api/posts/${postId}/related`] });
-      const post = allPosts?.find(p => p.id === relatedPostId);
+      const post = allPosts?.find((p: Post) => p.id === relatedPostId);
       if (post) {
-        setSelectedPosts(prev => [...prev, { id: post.id, content: post.content }]);
+        setSelectedPosts((prev) => [...prev, { id: post.id, content: post.content }]);
       }
       toast({
         title: "Success",
@@ -153,7 +154,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
   // Filter out duplicates and already selected posts
   const searchTextLower = searchText.toLowerCase();
-  const seenPosts = new Set([postId, ...selectedPosts.map(sp => sp.id)]);
+  const seenPosts = new Set([postId, ...selectedPosts.map((sp) => sp.id)]);
   const filteredPosts = allPosts?.reduce<Post[]>((acc, post) => {
     // Skip if already seen or selected
     if (seenPosts.has(post.id)) {
@@ -222,15 +223,15 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                           <CommandEmpty>No posts found</CommandEmpty>
                           <CommandGroup>
                             <ScrollArea className="h-[200px]">
-                              {filteredPosts.map(post => (
+                              {filteredPosts.map((post) => (
                                 <CommandItem
                                   key={post.id}
                                   onSelect={() => {
                                     addRelatedPost.mutate(post.id);
                                   }}
                                 >
-                                  <HighlightedText 
-                                    text={post.content.substring(0, 100)} 
+                                  <HighlightedText
+                                    text={post.content.substring(0, 100)}
                                     highlight={searchText}
                                   />
                                 </CommandItem>
@@ -243,7 +244,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {selectedPosts.map(post => (
+                    {selectedPosts.map((post) => (
                       <Badge
                         key={post.id}
                         variant="secondary"
@@ -280,9 +281,13 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                             <div className="flex justify-between items-center">
                               <span>
                                 Similarity score: {(post.similarity * 100).toFixed(2)}%
-                                {post.similarity > 0.7 ? " (Strong match)" : 
-                                 post.similarity > 0.4 ? " (Moderate match)" : 
-                                 post.similarity > 0.2 ? " (Weak match)" : " (Very weak match)"}
+                                {post.similarity > 0.7
+                                  ? " (Strong match)"
+                                  : post.similarity > 0.4
+                                  ? " (Moderate match)"
+                                  : post.similarity > 0.2
+                                  ? " (Weak match)"
+                                  : " (Very weak match)"}
                               </span>
                             </div>
                           </div>
