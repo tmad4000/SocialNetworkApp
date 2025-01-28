@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, ChevronUp, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,15 +39,32 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number, content: string }>>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Handle click outside
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const { data: relatedPosts, isLoading: relatedLoading } = useQuery<RelatedPost[]>({
     queryKey: [`/api/posts/${postId}/related`],
-    enabled: isOpen,
+    enabled: isOpen, // Only fetch when dropdown is open
+    staleTime: 60000, // Consider data fresh for 1 minute
+    cacheTime: 300000, // Keep in cache for 5 minutes
   });
 
   const { data: allPosts } = useQuery<Post[]>({
     queryKey: ["/api/posts"],
-    enabled: isOpen,
+    enabled: isOpen && searchText.length > 0, // Only fetch when dropdown is open and searching
+    staleTime: 60000,
+    cacheTime: 300000,
   });
 
   const addRelatedPost = useMutation({
@@ -94,12 +111,12 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     !selectedPosts.some(sp => sp.id === post.id)
   ) || [];
 
-  const handleOpenPost = (postId: number) => {
+  const handleOpenPost = useCallback((postId: number) => {
     window.open(`/post/${postId}`, '_blank');
-  };
+  }, []);
 
   return (
-    <div>
+    <div ref={dropdownRef}>
       {!isOpen ? (
         <Button
           variant="ghost"
