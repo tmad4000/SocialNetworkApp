@@ -67,6 +67,7 @@ export default function MinimalistPostCard({
     if (isEditing && textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      textareaRef.current.focus();
     }
   }, [content, isEditing]);
 
@@ -110,6 +111,10 @@ export default function MinimalistPostCard({
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
 
     // Clear existing timeout
     if (saveTimeoutRef.current) {
@@ -137,11 +142,10 @@ export default function MinimalistPostCard({
 
   return (
     <Card 
-      className={`transition-colors ${isEditing ? 'border-primary' : ''}`}
+      className={`transition-colors cursor-pointer ${isEditing ? 'border-primary' : ''}`}
       onClick={() => {
-        if (isOwner && !isEditing) {
+        if (isOwner) {
           setIsEditing(true);
-          textareaRef.current?.focus();
         }
       }}
     >
