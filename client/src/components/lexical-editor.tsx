@@ -84,7 +84,7 @@ export class UserMentionNode extends TextNode {
   }
 }
 
-// Group mention node
+// Group mention node with updated styling
 export class GroupMentionNode extends TextNode {
   __groupName: string;
 
@@ -103,7 +103,7 @@ export class GroupMentionNode extends TextNode {
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
-    dom.style.color = 'hsl(var(--primary))';
+    dom.style.color = 'hsl(var(--primary))'; // Changed to primary color for groups
     dom.style.fontWeight = '600';
     dom.classList.add('mention', 'group-mention');
     return dom;
@@ -149,7 +149,7 @@ export function $isGroupMentionNode(node: LexicalNode | null | undefined): node 
 // Mentions plugin component
 function MentionsPlugin({
   users,
-  groups,
+  groups = [], // Default to empty array
 }: {
   users: Array<{ id: number; username: string; avatar: string | null }>;
   groups: Array<{ id: number; name: string }>;
@@ -160,8 +160,9 @@ function MentionsPlugin({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  // Updated pattern matching to handle spaces
   const checkForMentionPattern = useCallback((text: string) => {
-    const match = text.match(/@(\w*)$/);
+    const match = text.match(/@([^@\n]*?)$/); // Updated regex to match any text after @ until end or newline
     if (match) {
       const query = match[1].toLowerCase();
 
@@ -187,6 +188,7 @@ function MentionsPlugin({
       setShowSuggestions(combined.length > 0);
       setSelectedIndex(0);
 
+      // Position the suggestions dropdown
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
