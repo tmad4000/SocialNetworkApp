@@ -21,11 +21,11 @@ interface MinimalistPostCardProps {
   onDelete: () => void;
 }
 
-export default function MinimalistPostCard({ 
-  post, 
+export default function MinimalistPostCard({
+  post,
   onOrderChange,
   onCreatePost,
-  onDelete
+  onDelete,
 }: MinimalistPostCardProps) {
   const [content, setContent] = useState(post.content);
   const [isEditing, setIsEditing] = useState(false);
@@ -169,7 +169,7 @@ export default function MinimalistPostCard({
   const isOwner = currentUser?.id === post.user.id;
 
   return (
-    <Card 
+    <Card
       className={`transition-colors cursor-pointer border-t-0 first:border-t rounded-none ${isEditing ? 'border-primary' : ''}`}
       onClick={() => {
         if (isOwner) {
@@ -178,9 +178,14 @@ export default function MinimalistPostCard({
       }}
     >
       <CardContent className="p-0.5">
+        {post.group && (
+          <div className="text-xs text-muted-foreground px-2 pt-1">
+            Posted in {post.group.name}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
-          className="w-full resize-none bg-transparent outline-none px-2 py-1"
+          className="w-full resize-none bg-transparent outline-none px-2 py-1 whitespace-pre-wrap break-words"
           value={content}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
@@ -195,6 +200,7 @@ export default function MinimalistPostCard({
           rows={1}
           style={{
             overflow: 'hidden',
+            wordWrap: 'break-word',
           }}
         />
       </CardContent>

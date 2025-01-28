@@ -2309,6 +2309,49 @@ export function registerRoutes(app: Express): Server {
     const mentions = text.match(/@(\w+)/g) || [];
     return mentions.map(mention => mention.substring(1));
   }
+  // Add this new endpoint after the existing group routes
+  app.put("/api/groups/:id", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    const { name } = req.body;
+    if (!name || typeof name !== "string") {
+      return res.status(400).send("Name is required");
+    }
+
+    try {
+      // Check if user is an admin of the group
+      const membership = await db.query.groupMembers.findFirst({
+        where: and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, req.user.id),
+          eq(groupMembers.role, 'admin')
+        ),
+      });
+
+      if (!membership) {
+        return res.status(403).send("Only group admins can rename the group");
+      }
+
+      // Update group name
+      const [updatedGroup] = await db
+        .update(groups)
+        .set({ name })
+        .where(eq(groups.id, groupId))
+        .returning();
+
+      res.json(updatedGroup);
+    } catch (error) {
+      console.error('Error updating group:', error);
+      res.status(500).send("Error updating group");
+    }
+  });
 
   return httpServer;
 }

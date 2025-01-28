@@ -26,6 +26,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
   const [editorState, setEditorState] = useState("");
   const [privacy, setPrivacy] = useState("public");
   const [showSplitDialog, setShowSplitDialog] = useState(false);
+  const [pendingContent, setPendingContent] = useState("");
   const [pendingPosts, setPendingPosts] = useState<string[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -51,7 +52,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
           content, 
           targetUserId, 
           groupId, 
-          privacy // Include privacy setting in new posts
+          privacy
         }),
         credentials: "include",
       });
@@ -81,7 +82,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         mentions: [],
         likeCount: 0,
         liked: false,
-        privacy, // Include privacy in optimistic update
+        privacy,
       };
 
       if (groupId && group) {
@@ -146,6 +147,21 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
     },
   });
 
+  const handleSplitDecision = (shouldSplit: boolean) => {
+    if (shouldSplit) {
+      // Create multiple posts
+      pendingPosts.forEach(async (post) => {
+        await createPost.mutateAsync(post);
+      });
+    } else {
+      // Create single post with original content
+      createPost.mutate(pendingContent);
+    }
+    setPendingPosts([]);
+    setPendingContent("");
+    setShowSplitDialog(false);
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!content.trim()) return;
@@ -156,12 +172,12 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       .filter(post => post.length > 0);
 
     if (posts.length > 1) {
+      setPendingContent(content);
       setPendingPosts(posts);
       setShowSplitDialog(true);
-      return;
+    } else {
+      createPost.mutate(content);
     }
-
-    createPost.mutate(content);
   };
 
   const placeholderText = groupId
@@ -187,54 +203,60 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex justify-between items-center mb-2">
-              <div className="flex-1" /> {/* Spacer to push privacy control to the right */}
-              {!groupId && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-foreground flex gap-2"
-                    >
-                      {renderPrivacyIcon()}
-                      <span className="text-sm">
-                        {privacy.charAt(0).toUpperCase() + privacy.slice(1)}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-40 p-0" align="end">
-                    <div className="space-y-1 p-1">
-                      <Button
-                        variant={privacy === 'public' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('public')}
-                      >
-                        <Globe className="h-4 w-4" />
-                        <span>Public</span>
-                      </Button>
-                      <Button
-                        variant={privacy === 'friends' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('friends')}
-                      >
-                        <Users className="h-4 w-4" />
-                        <span>Friends</span>
-                      </Button>
-                      <Button
-                        variant={privacy === 'private' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('private')}
-                      >
-                        <Lock className="h-4 w-4" />
-                        <span>Private</span>
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+              {group && (
+                <div className="text-sm text-muted-foreground">
+                  Posting in {group.name}
+                </div>
               )}
+              <div className={`flex-1 ${group ? 'text-right' : ''}`}>
+                {!groupId && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-foreground flex gap-2"
+                      >
+                        {renderPrivacyIcon()}
+                        <span className="text-sm">
+                          {privacy.charAt(0).toUpperCase() + privacy.slice(1)}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 p-0" align="end">
+                      <div className="space-y-1 p-1">
+                        <Button
+                          variant={privacy === 'public' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('public')}
+                        >
+                          <Globe className="h-4 w-4" />
+                          <span>Public</span>
+                        </Button>
+                        <Button
+                          variant={privacy === 'friends' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('friends')}
+                        >
+                          <Users className="h-4 w-4" />
+                          <span>Friends</span>
+                        </Button>
+                        <Button
+                          variant={privacy === 'private' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('private')}
+                        >
+                          <Lock className="h-4 w-4" />
+                          <span>Private</span>
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
             </div>
 
             <LexicalEditor
@@ -265,16 +287,10 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         onOpenChange={(open) => {
           setShowSplitDialog(open);
           if (!open) {
-            setPendingPosts([]);
+            handleSplitDecision(false);
           }
         }}
-        onConfirm={() => {
-          pendingPosts.forEach(async (post) => {
-            await createPost.mutateAsync(post);
-          });
-          setPendingPosts([]);
-          setShowSplitDialog(false);
-        }}
+        onConfirm={() => handleSplitDecision(true)}
         postCount={pendingPosts.length}
       />
     </>
