@@ -17,7 +17,7 @@ import {
   $createRangeSelection,
   $setSelection,
   RangeSelection,
-  createEditor,
+  SerializedTextNode,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -29,7 +29,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Command, Users } from "lucide-react";
 import type { Group } from "@db/schema";
 
-// Update MentionNode to support both users and groups
+interface SerializedMentionNode extends SerializedTextNode {
+  mentionName: string;
+  mentionType: 'user' | 'group';
+}
+
 export class MentionNode extends TextNode {
   __mention: string;
   __type: 'user' | 'group';
@@ -50,12 +54,9 @@ export class MentionNode extends TextNode {
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
-    dom.style.color = this.__type === 'group' ? 'hsl(var(--primary))' : 'hsl(var(--primary))';
-    dom.style.fontWeight = '500';
-    dom.style.whiteSpace = 'nowrap';
+    dom.style.color = 'hsl(var(--primary))';
+    dom.style.fontWeight = this.__type === 'group' ? '600' : '500';
     dom.classList.add('mention', `mention-${this.__type}`);
-    dom.setAttribute('data-mention', this.__mention);
-    dom.setAttribute('data-mention-type', this.__type);
     return dom;
   }
 
@@ -63,27 +64,20 @@ export class MentionNode extends TextNode {
     return false;
   }
 
-  createSelection(): RangeSelection {
-    const selection = $createRangeSelection();
-    selection.anchor.set(this.getKey(), 0, 'text');
-    selection.focus.set(this.getKey(), this.getTextContent().length, 'text');
-    return selection;
-  }
-
-  exportJSON() {
+  exportJSON(): SerializedMentionNode {
     return {
       ...super.exportJSON(),
       mentionName: this.__mention,
-      type: 'mention',
       mentionType: this.__type,
+      type: 'mention',
       version: 1,
     };
   }
 
-  static importJSON(serializedNode: any): MentionNode {
+  static importJSON(serializedNode: SerializedMentionNode): MentionNode {
     const node = $createMentionNode(
       serializedNode.mentionName,
-      serializedNode.mentionType || 'user'
+      serializedNode.mentionType
     );
     node.setTextContent(serializedNode.text);
     node.setFormat(serializedNode.format);
@@ -91,23 +85,6 @@ export class MentionNode extends TextNode {
     node.setMode(serializedNode.mode);
     node.setStyle(serializedNode.style);
     return node;
-  }
-
-  exportDOM(): { element?: HTMLElement } {
-    const element = document.createElement('span');
-    element.classList.add('mention', `mention-${this.__type}`);
-    element.setAttribute('data-mention', this.__mention);
-    element.setAttribute('data-mention-type', this.__type);
-    element.textContent = this.getTextContent();
-    return { element };
-  }
-
-  static importDOM(): { span: () => boolean } {
-    return {
-      span: (domNode: HTMLElement) => {
-        return domNode.hasAttribute('data-mention');
-      },
-    };
   }
 }
 
@@ -173,6 +150,7 @@ function MentionsPlugin({
       setShowSuggestions(combined.length > 0);
       setSelectedIndex(0);
 
+      // Get caret position for suggestions dropdown
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
@@ -192,11 +170,9 @@ function MentionsPlugin({
   }, [editor, users, groups]);
 
   useEffect(() => {
-    const removeListener = editor.registerTextContentListener((text) => {
+    return editor.registerTextContentListener((text) => {
       checkForMentionPattern(text);
     });
-
-    return removeListener;
   }, [editor, checkForMentionPattern]);
 
   const insertMention = useCallback((suggestion: MentionSuggestion) => {
@@ -222,7 +198,6 @@ function MentionsPlugin({
       lastNode.remove();
       parent.append(textNode, mentionNode, spaceNode);
       spaceNode.select();
-      editor.focus();
     });
     setShowSuggestions(false);
   }, [editor]);
@@ -269,6 +244,7 @@ function MentionsPlugin({
     );
   }, [editor, showSuggestions, suggestions, selectedIndex, insertMention]);
 
+  // Handle backspace command
   useEffect(() => {
     return editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
@@ -358,7 +334,6 @@ interface LexicalEditorProps {
   onSubmit?: () => void;
   autoFocus?: boolean;
   setEditor?: (editor: any) => void;
-  editorState?: string;
 }
 
 function InitialValuePlugin({ initialValue, initialState }: { initialValue?: string; initialState?: string }) {
@@ -439,11 +414,7 @@ function LexicalEditor({
   onSubmit,
   autoFocus,
   setEditor,
-  editorState,
 }: LexicalEditorProps) {
-  const [editorInstance, setEditorInstance] = useState<any>(null);
-  const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
-
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot();
@@ -451,18 +422,6 @@ function LexicalEditor({
       onChange?.(text, JSON.stringify(editorState));
     });
   }, [onChange]);
-
-  const clearContent = useCallback(() => {
-    if (editorInstance) {
-      editorInstance.update(() => {
-        const root = $getRoot();
-        root.clear();
-        const paragraph = $createParagraphNode();
-        root.append(paragraph);
-      });
-      onClear?.();
-    }
-  }, [editorInstance, onClear]);
 
   const initialConfig = {
     namespace: "SocialPostEditor",
@@ -495,7 +454,7 @@ function LexicalEditor({
               <span>{placeholder || "What's on your mind? Use @ to mention users or groups"}</span>
               {onSubmit && (
                 <span className="ml-2 text-sm opacity-50">
-                  {isMac ? (
+                  {navigator.platform.toLowerCase().includes('mac') ? (
                     <>
                       <Command className="w-4 h-4 inline mb-0.5" />
                       +Enter to post
@@ -513,8 +472,8 @@ function LexicalEditor({
         <HistoryPlugin />
         <MentionsPlugin users={users} groups={groups} />
         <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
-        <ShortcutPlugin onSubmit={onSubmit} />
         {autoFocus && <AutoFocusPlugin />}
+        <ShortcutPlugin onSubmit={onSubmit} />
       </div>
     </LexicalComposer>
   );
