@@ -423,8 +423,9 @@ function EditorContainer({
       root.clear();
       const paragraph = $createParagraphNode();
       root.append(paragraph);
+      onChange?.("", ""); // Clear both content and state
     });
-  }, [editor]);
+  }, [editor, onChange]);
 
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
@@ -433,6 +434,12 @@ function EditorContainer({
       onChange?.(text, JSON.stringify(editorState));
     });
   }, [onChange]);
+
+  useEffect(() => {
+    if (initialState === "") {
+      clearContent();
+    }
+  }, [initialState, clearContent]);
 
   return (
     <div className="relative min-h-[100px] w-full border rounded-md">

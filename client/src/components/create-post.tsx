@@ -57,7 +57,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
           content,
           targetUserId,
           groupId,
-          privacy
+          privacy: groupId ? 'public' : privacy // If posting in a group, always public
         }),
         credentials: "include",
       });
@@ -68,73 +68,14 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
       return res.json();
     },
-    onMutate: async (newContent) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
-      if (groupId) {
-        await queryClient.cancelQueries({ queryKey: [`/api/groups/${groupId}/posts`] });
-      }
-      if (targetUserId) {
-        await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${targetUserId}`] });
-      }
-
-      const optimisticPost = {
-        id: Date.now(),
-        content: newContent,
-        createdAt: new Date().toISOString(),
-        status: 'none',
-        userId: currentUser?.id,
-        user: currentUser,
-        mentions: [],
-        likeCount: 0,
-        liked: false,
-        privacy,
-      };
-
-      if (groupId && group) {
-        optimisticPost.group = group;
-      }
-
-      const queries = [
-        ["/api/posts"],
-        groupId ? [`/api/groups/${groupId}/posts`] : null,
-        targetUserId ? [`/api/posts/user/${targetUserId}`] : null,
-      ].filter(Boolean);
-
-      const previousPosts: Record<string, any> = {};
-
-      queries.forEach(queryKey => {
-        if (queryKey) {
-          const posts = queryClient.getQueryData(queryKey);
-          previousPosts[JSON.stringify(queryKey)] = posts;
-          queryClient.setQueryData(queryKey, (old: any[] = []) => [optimisticPost, ...old]);
-        }
-      });
-
-      return { previousPosts, optimisticPost };
-    },
-    onError: (err, newContent, context) => {
-      if (context?.previousPosts) {
-        Object.entries(context.previousPosts).forEach(([queryKeyStr, posts]) => {
-          const queryKey = JSON.parse(queryKeyStr);
-          queryClient.setQueryData(queryKey, posts);
-        });
-      }
-
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message,
-      });
-    },
     onSuccess: () => {
+      // Clear form state
       setContent("");
       setEditorState("");
-      editor?.update(() => {
-        const root = $getRoot();
-        root.clear();
-        root.append($createParagraphNode());
-      });
+      // Reset editor to blank state.  This is crucial for a good UX.
+      setEditor(null); //This line is added to properly reset the editor state.
 
+      // Reset all queries
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       if (groupId) {
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
@@ -148,6 +89,13 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       toast({
         title: "Success",
         description: "Post created successfully",
+      });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message,
       });
     },
   });
@@ -180,6 +128,13 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       setShowSplitDialog(true);
     } else {
       createPost.mutate(content);
+    }
+  };
+
+  const handleChange = (text: string, state?: string) => {
+    setContent(text);
+    if (state) {
+      setEditorState(state);
     }
   };
 
@@ -263,16 +218,13 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
             </div>
 
             <LexicalEditor
-              onChange={(text, state) => {
-                setContent(text);
-                setEditorState(state || "");
-              }}
+              onChange={handleChange}
               users={users || []}
               groups={groups || []}
               placeholder={placeholderText}
               onSubmit={handleSubmit}
-              setEditor={setEditor}
-              editorState={editorState}
+              autoFocus
+              initialState={editorState}
             />
             <div className="flex justify-end">
               <Button
