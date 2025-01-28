@@ -13,6 +13,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 import type { Post, User, PostMention, Group } from "@db/schema";
 import PostCard from "./post-card";
 
@@ -38,6 +42,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number, content: string }>>([]);
+  const [selectedPostForModal, setSelectedPostForModal] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const commandRef = useRef<HTMLDivElement>(null);
@@ -82,6 +87,12 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     gcTime: 300000,
   });
 
+  // Fetch selected post for modal
+  const { data: selectedPost } = useQuery<RelatedPost>({
+    queryKey: [`/api/posts/${selectedPostForModal}`],
+    enabled: !!selectedPostForModal,
+  });
+
   const addRelatedPost = useMutation({
     mutationFn: async (relatedPostId: number) => {
       const res = await fetch(`/api/posts/${postId}/related`, {
@@ -122,20 +133,23 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   });
 
   // Filter out duplicates and already selected posts
-  const uniquePosts = new Set();
+  const seenPosts = new Set([postId, ...selectedPosts.map(sp => sp.id)]);
   const filteredPosts = allPosts?.filter(post => {
-    if (post.id === postId || selectedPosts.some(sp => sp.id === post.id) || uniquePosts.has(post.id)) {
+    // Skip if already seen or selected
+    if (seenPosts.has(post.id)) {
       return false;
     }
+
+    // Add to seen posts and check content match
     if (post.content.toLowerCase().includes(searchText.toLowerCase())) {
-      uniquePosts.add(post.id);
+      seenPosts.add(post.id);
       return true;
     }
     return false;
   }) || [];
 
   const handleOpenPost = useCallback((postId: number) => {
-    window.open(`/post/${postId}`, '_blank');
+    setSelectedPostForModal(postId);
   }, []);
 
   return (
@@ -171,7 +185,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                   <div ref={commandRef}>
                     <Command
                       className="rounded-lg border shadow-md"
-                      shouldFilter={false} // Prevent default filtering
+                      shouldFilter={false}
                     >
                       <CommandInput
                         placeholder="Search for a post..."
@@ -260,6 +274,12 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
           </div>
         </div>
       )}
+
+      <Dialog open={!!selectedPostForModal} onOpenChange={() => setSelectedPostForModal(null)}>
+        <DialogContent className="max-w-3xl">
+          {selectedPost && <PostCard post={selectedPost} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
