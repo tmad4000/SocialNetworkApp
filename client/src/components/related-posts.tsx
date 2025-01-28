@@ -49,8 +49,20 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       }
     }
 
+    // Handle escape key
+    function handleEscapeKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscapeKey);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscapeKey);
+    };
   }, []);
 
   const { data: relatedPosts, isLoading: relatedLoading } = useQuery<RelatedPost[]>({
