@@ -127,7 +127,7 @@ export default function PostFeed({
         body: JSON.stringify({ 
           content,
           groupId,
-          manualOrder: Date.now() // Use timestamp as initial order
+          manualOrder: Date.now() 
         }),
         credentials: "include",
       });
@@ -157,7 +157,7 @@ export default function PostFeed({
 
     let sorted = [...posts];
 
-    // Apply sorting
+    
     if (sortOrder === 'manual') {
       sorted.sort((a, b) => (a.manualOrder || 0) - (b.manualOrder || 0));
     } else {

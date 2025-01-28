@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Users, Pencil, Search, QrCode } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import PostCard from "@/components/post-card";
 import CreatePost from "@/components/create-post";
 import FriendRequest from "@/components/friend-request";
 import { useUser } from "@/hooks/use-user";
@@ -24,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import QRCode from "qrcode";
+import PostFeed from "@/components/post-feed";
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done'; // inferred type
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -557,16 +557,17 @@ export default function ProfilePage() {
           }}
         />
 
-        <div className="space-y-6">
-          {filteredPosts?.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-          {!filteredPosts?.length && (
-            <p className="text-muted-foreground text-center py-8">
-              {searchQuery ? "No posts found matching your search." : "No posts yet"}
-            </p>
-          )}
-        </div>
+        <PostFeed
+          userId={user.id}
+          searchQuery={searchQuery}
+          showStatusOnly={showStatusOnly}
+          showStarredOnly={showStarredOnly}
+          selectedStatuses={selectedStatuses}
+          onSearchChange={setSearchQuery}
+          onStatusOnlyChange={setShowStatusOnly}
+          onStarredOnlyChange={setShowStarredOnly}
+          onStatusesChange={setSelectedStatuses}
+        />
       </div>
 
       <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
