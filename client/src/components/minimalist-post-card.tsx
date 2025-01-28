@@ -31,6 +31,7 @@ export default function MinimalistPostCard({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useUser();
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
   const updatePost = useMutation({
     mutationFn: async (newContent: string) => {
@@ -109,15 +110,28 @@ export default function MinimalistPostCard({
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
-    // Auto-save after a delay
-    const timeoutId = setTimeout(() => {
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save
+    saveTimeoutRef.current = setTimeout(() => {
       if (e.target.value !== post.content) {
         updatePost.mutate(e.target.value);
       }
     }, 1000);
-
-    return () => clearTimeout(timeoutId);
   };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const isOwner = currentUser?.id === post.user.id;
 
