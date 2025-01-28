@@ -310,8 +310,9 @@ function MentionsPlugin({
       lastNode.remove();
       parent.append(textNode, mentionNode, spaceNode);
 
-      // Move selection after the space
+      // Move selection after the space and ensure editor keeps focus
       spaceNode.select();
+      editor.focus();
     });
     setShowSuggestions(false);
   };
@@ -333,7 +334,12 @@ function MentionsPlugin({
               className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
                 index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
               }`}
-              onClick={() => insertMention(suggestion)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                insertMention(suggestion);
+                setShowSuggestions(false);
+              }}
               onMouseEnter={() => setSelectedIndex(index)}
             >
               {suggestion.type === 'user' ? (
