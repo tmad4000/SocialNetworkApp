@@ -136,7 +136,15 @@ export default function MinimalistPostCard({
   const isOwner = currentUser?.id === post.user.id;
 
   return (
-    <Card className={`transition-colors ${isEditing ? 'border-primary' : ''}`}>
+    <Card 
+      className={`transition-colors ${isEditing ? 'border-primary' : ''}`}
+      onClick={() => {
+        if (isOwner && !isEditing) {
+          setIsEditing(true);
+          textareaRef.current?.focus();
+        }
+      }}
+    >
       <CardContent className="p-1.5">
         <textarea
           ref={textareaRef}
@@ -144,17 +152,11 @@ export default function MinimalistPostCard({
           value={content}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onFocus={() => setIsEditing(true)}
+          onFocus={() => isOwner && setIsEditing(true)}
           onBlur={() => {
             setIsEditing(false);
             if (content !== post.content) {
               updatePost.mutate(content);
-            }
-          }}
-          onClick={() => {
-            if (isOwner) {
-              setIsEditing(true);
-              textareaRef.current?.focus();
             }
           }}
           readOnly={!isOwner}
