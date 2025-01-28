@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback, KeyboardEvent, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
 import MinimalistPostCard from "@/components/minimalist-post-card";
 import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
-import type { Post, User, PostMention, Group, Friend } from "@db/schema";
+import type { Post, User, PostMention, Group } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
 import { useUser } from "@/hooks/use-user";
 import { useFriends } from "@/hooks/use-friends";
@@ -55,24 +55,19 @@ export default function PostFeed({
   const { data: friends } = useFriends();
   const queryClient = useQueryClient();
   const [internalViewMode, setInternalViewMode] = useState<'standard' | 'minimalist'>('standard');
-  const [activeView, setActiveView] = useState<'standard' | 'minimalist'>('standard');
+  const [sortOrder, setSortOrder] = useState<'dateCreated' | 'manual'>('dateCreated');
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalShowStatusOnly, setInternalShowStatusOnly] = useState(false);
   const [internalShowStarredOnly, setInternalShowStarredOnly] = useState(false);
   const [internalSelectedStatuses, setInternalSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
-  const [sortOrder, setSortOrder] = useState<'dateCreated' | 'manual'>(
-    'dateCreated'
-  );
 
   const activeViewMode = externalViewMode ?? internalViewMode;
-  setActiveView(activeViewMode);
-
 
   useEffect(() => {
-    setSortOrder(activeView === 'minimalist' ? 'manual' : 'dateCreated');
-  }, [activeView]);
+    setSortOrder(activeViewMode === 'minimalist' ? 'manual' : 'dateCreated');
+  }, [activeViewMode]);
 
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
   const showStatusOnly = externalShowStatusOnly ?? internalShowStatusOnly;
@@ -158,15 +153,14 @@ export default function PostFeed({
     staleTime: 5000,
   });
 
-  const handleViewChange = (view: 'standard' | 'minimalist') => {
-    setInternalViewMode(view);
+  const handleViewChange = (view: string) => {
+    setInternalViewMode(view as 'standard' | 'minimalist');
   };
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
     let sorted = [...posts];
-
 
     if (sortOrder === 'manual') {
       sorted.sort((a, b) => (a.manualOrder || 0) - (b.manualOrder || 0));
@@ -233,7 +227,7 @@ export default function PostFeed({
   return (
     <div className="space-y-6">
       {!externalViewMode && (
-        <Tabs value={activeView} onValueChange={handleViewChange as any} className="w-full">
+        <Tabs value={activeViewMode} onValueChange={handleViewChange} className="w-full">
           <div className="flex justify-between items-center">
             <TabsList>
               <TabsTrigger value="standard">Standard View</TabsTrigger>
@@ -241,73 +235,77 @@ export default function PostFeed({
             </TabsList>
           </div>
 
-          <TabsContent value="standard">
-            {showFilterBar && (
-              <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search posts..."
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    className="pl-10"
+          {activeViewMode === 'standard' && (
+            <TabsContent value="standard">
+              {showFilterBar && (
+                <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+                  <div className="relative w-64">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search posts..."
+                      value={searchQuery}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <PostFilter
+                    showStatusOnly={showStatusOnly}
+                    onFilterChange={handleStatusOnlyChange}
+                    selectedStatuses={selectedStatuses}
+                    onStatusesChange={handleStatusesChange}
+                    statusCounts={statusCounts}
+                    showStarredOnly={showStarredOnly}
+                    onStarredFilterChange={handleStarredOnlyChange}
                   />
                 </div>
-                <PostFilter
-                  showStatusOnly={showStatusOnly}
-                  onFilterChange={handleStatusOnlyChange}
-                  selectedStatuses={selectedStatuses}
-                  onStatusesChange={handleStatusesChange}
-                  statusCounts={statusCounts}
-                  showStarredOnly={showStarredOnly}
-                  onStarredFilterChange={handleStarredOnlyChange}
-                />
-              </div>
-            )}
+              )}
 
-            {filteredPosts.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                {searchQuery ? "No posts found matching your search." : "No posts yet"}
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {filteredPosts.map((post) => (
-                  <PostCard key={post.id} post={post} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+              {filteredPosts.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  {searchQuery ? "No posts found matching your search." : "No posts yet"}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {filteredPosts.map((post) => (
+                    <PostCard key={post.id} post={post} />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          )}
 
-          <TabsContent value="minimalist">
-            {filteredPosts.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                {searchQuery ? "No posts found matching your search." : "No posts yet"}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {filteredPosts.map((post, index) => (
-                  <MinimalistPostCard
-                    key={post.id}
-                    post={post}
-                    onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
-                    onCreatePost={(content, afterPostId) => {
-                      const prevPost = filteredPosts[index - 1];
-                      const nextPost = filteredPosts[index + 1];
-                      const newOrder = prevPost && nextPost
-                        ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
-                        : prevPost
-                          ? prevPost.manualOrder! + 1000
-                          : nextPost
-                            ? nextPost.manualOrder! - 1000
-                            : Date.now();
+          {activeViewMode === 'minimalist' && (
+            <TabsContent value="minimalist">
+              {filteredPosts.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  {searchQuery ? "No posts found matching your search." : "No posts yet"}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredPosts.map((post, index) => (
+                    <MinimalistPostCard
+                      key={post.id}
+                      post={post}
+                      onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
+                      onCreatePost={(content) => {
+                        const prevPost = filteredPosts[index - 1];
+                        const nextPost = filteredPosts[index + 1];
+                        const newOrder = prevPost && nextPost
+                          ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
+                          : prevPost
+                            ? prevPost.manualOrder! + 1000
+                            : nextPost
+                              ? nextPost.manualOrder! - 1000
+                              : Date.now();
 
-                      createPost.mutate(content);
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                        createPost.mutate(content);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       )}
     </div>
