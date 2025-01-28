@@ -74,20 +74,10 @@ export default function MinimalistPostCard({
       if (e.shiftKey) {
         // Shift+Enter: Add new line
         return;
-      } else if (e.ctrlKey || e.metaKey) {
-        // Ctrl/Cmd+Enter: Save changes
-        e.preventDefault();
-        if (content !== post.content) {
-          updatePost.mutate(content);
-        }
-        setIsEditing(false);
       } else {
-        // Enter: Check if at end of textarea
-        const textarea = e.currentTarget;
-        if (textarea.selectionStart === textarea.value.length) {
-          e.preventDefault();
-          onCreatePost("", post.id);
-        }
+        // Enter: Create new post
+        e.preventDefault();
+        onCreatePost("", post.id);
       }
     } else if (e.key === 'ArrowUp') {
       const textarea = e.currentTarget;
@@ -133,7 +123,7 @@ export default function MinimalistPostCard({
 
   return (
     <Card className={`transition-colors ${isEditing ? 'border-primary' : ''}`}>
-      <CardContent className="p-3">
+      <CardContent className="p-1.5">
         <textarea
           ref={textareaRef}
           className="w-full resize-none bg-transparent outline-none"
