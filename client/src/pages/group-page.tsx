@@ -617,9 +617,6 @@ export default function GroupPage() {
           showStatusOnly={showStatusOnly}
           selectedStatuses={selectedStatuses}
           showStarredOnly={showStarredOnly}
-          onStatusOnlyChange={setShowStatusOnly}
-          onStarredOnlyChange={setShowStarredOnly}
-          onStatusesChange={setSelectedStatuses}
         />
       </div>
 

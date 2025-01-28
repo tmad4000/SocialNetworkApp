@@ -1255,64 +1255,47 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add post creation endpoint - UPDATED
+  // Create post endpoint - updated to handle group posts correctly
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
     }
 
-    const { content = "", targetUserId, groupId, privacy } = req.body;
+    const { content, groupId, privacy = "public" } = req.body;
+
+    if (!content || typeof content !== "string") {
+      return res.status(400).send("Content is required");
+    }
 
     try {
-      // Get the highest manual order value
-      const [highestOrder] = await db
-        .select({ maxOrder: sql<number>`COALESCE(MAX(manual_order), 0)` })
-        .from(posts);
+      // If posting to a group, verify membership
+      if (groupId) {
+        const member = await db.query.groupMembers.findFirst({
+          where: and(
+            eq(groupMembers.groupId, groupId),
+            eq(groupMembers.userId, req.user.id)
+          ),
+        });
 
-      // Create new post with manual order
+        if (!member) {
+          return res.status(403).send("You must be a member of the group to post");
+        }
+      }
+
+      // Create the post
       const [newPost] = await db
         .insert(posts)
         .values({
           content,
           userId: req.user.id,
-          groupId,
-          privacy: privacy || 'public',
-          manualOrder: highestOrder.maxOrder + 1000, // Leave gaps for reordering
+          groupId: groupId || null,
+          privacy: groupId ? "public" : privacy,
+          status: "none",
         })
         .returning();
 
-      // Process mentions if content is not empty
-      if (content) {
-        const mentionedUsernames = extractMentions(content);
-        if (mentionedUsernames.length > 0) {
-          const mentionedUsers = await db
-            .select()
-            .from(users)
-            .where(inArray(users.username, mentionedUsernames));
-
-          if (mentionedUsers.length > 0) {
-            await db.insert(postMentions).values(
-              mentionedUsers.map((user) => ({
-                postId: newPost.id,
-                mentionedUserId: user.id,
-              }))
-            );
-          }
-        }
-
-        // Generate embedding only if content is not empty
-        try {
-          const embedding = await generateEmbedding(content);
-          await db.insert(postEmbeddings).values({
-            postId: newPost.id,
-            embedding,
-          });
-        } catch (embeddingError) {
-          console.error('Error generating post embedding:', embeddingError);
-        }
-      }
-
-      const postWithDetails = await db.query.posts.findFirst({
+      // Get full post data with relations
+      const post = await db.query.posts.findFirst({
         where: eq(posts.id, newPost.id),
         with: {
           user: {
@@ -1325,7 +1308,7 @@ export function registerRoutes(app: Express): Server {
           group: true,
           mentions: {
             with: {
-              mentionedUser: {
+              user: {
                 columns: {
                   id: true,
                   username: true,
@@ -1333,23 +1316,11 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          },
-          likes: true,
+          }
         }
       });
 
-      if (!postWithDetails) {
-        throw new Error("Failed to fetch created post");
-      }
-
-      const transformedPost = {
-        ...postWithDetails,
-        likeCount: postWithDetails.likes.length,
-        liked: postWithDetails.likes.some(like => like.userId === req.user?.id),
-        likes: undefined,
-      };
-
-      res.json(transformedPost);
+      res.json(post);
     } catch (error) {
       console.error('Error creating post:', error);
       res.status(500).send("Error creating post");
