@@ -17,6 +17,7 @@ import {
   $createRangeSelection,
   $setSelection,
   RangeSelection,
+  createEditor,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -58,10 +59,6 @@ export class MentionNode extends TextNode {
     return dom;
   }
 
-  isSimpleText(): boolean {
-    return false;
-  }
-
   isSegmented(): boolean {
     return false;
   }
@@ -73,52 +70,44 @@ export class MentionNode extends TextNode {
     return selection;
   }
 
-  selectPrevious(anchorOffset?: number, focusOffset?: number): RangeSelection {
-    const selection = this.createSelection();
-    if (typeof anchorOffset === 'number') {
-      selection.anchor.offset = anchorOffset;
-    }
-    if (typeof focusOffset === 'number') {
-      selection.focus.offset = focusOffset;
-    }
-    $setSelection(selection);
-    return selection;
-  }
-
-  selectNext(anchorOffset?: number, focusOffset?: number): RangeSelection {
-    const selection = this.createSelection();
-    if (typeof anchorOffset === 'number') {
-      selection.anchor.offset = anchorOffset;
-    }
-    if (typeof focusOffset === 'number') {
-      selection.focus.offset = focusOffset;
-    }
-    $setSelection(selection);
-    return selection;
-  }
-
-  splitText(...splitOffsets: number[]): TextNode[] {
-    return [this];
-  }
-
   exportJSON() {
     return {
       ...super.exportJSON(),
       mentionName: this.__mention,
-      mentionType: this.__type,
       type: 'mention',
+      mentionType: this.__type,
       version: 1,
     };
   }
 
   static importJSON(serializedNode: any): MentionNode {
-    const node = $createMentionNode(serializedNode.mentionName, serializedNode.mentionType);
+    const node = $createMentionNode(
+      serializedNode.mentionName,
+      serializedNode.mentionType || 'user'
+    );
     node.setTextContent(serializedNode.text);
     node.setFormat(serializedNode.format);
     node.setDetail(serializedNode.detail);
     node.setMode(serializedNode.mode);
     node.setStyle(serializedNode.style);
     return node;
+  }
+
+  exportDOM(): { element?: HTMLElement } {
+    const element = document.createElement('span');
+    element.classList.add('mention', `mention-${this.__type}`);
+    element.setAttribute('data-mention', this.__mention);
+    element.setAttribute('data-mention-type', this.__type);
+    element.textContent = this.getTextContent();
+    return { element };
+  }
+
+  static importDOM(): { span: () => boolean } {
+    return {
+      span: (domNode: HTMLElement) => {
+        return domNode.hasAttribute('data-mention');
+      },
+    };
   }
 }
 
@@ -157,13 +146,11 @@ function MentionsPlugin({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
-  // Helper function to check for @ pattern and update suggestions
   const checkForMentionPattern = useCallback((text: string) => {
     const match = text.match(/@(\w*)$/);
     if (match) {
       const query = match[1].toLowerCase();
 
-      // Combine and filter both users and groups
       const userSuggestions: MentionSuggestion[] = users
         .filter(user => user.username.toLowerCase().includes(query))
         .map(user => ({
@@ -181,7 +168,6 @@ function MentionsPlugin({
           type: 'group' as const
         }));
 
-      // Combine suggestions with groups first
       const combined = [...groupSuggestions, ...userSuggestions];
       setSuggestions(combined);
       setShowSuggestions(combined.length > 0);
@@ -225,22 +211,16 @@ function MentionsPlugin({
 
       if (mentionOffset === -1) return;
 
-      // Create mention node with type
       const mentionNode = $createMentionNode(suggestion.name, suggestion.type);
       const spaceNode = $createTextNode(' ');
-
-      // Split text and replace mention
       const textBeforeMention = textContent.slice(0, mentionOffset);
       const textNode = $createTextNode(textBeforeMention);
 
       const parent = lastNode.getParent();
       if (!parent) return;
 
-      // Replace the current node with our new nodes
       lastNode.remove();
       parent.append(textNode, mentionNode, spaceNode);
-
-      // Move selection after the space and ensure editor keeps focus
       spaceNode.select();
       editor.focus();
     });
@@ -305,7 +285,6 @@ function MentionsPlugin({
           return true;
         }
 
-        // Check for @ pattern after backspace
         editor.getEditorState().read(() => {
           const text = firstNode.getTextContent();
           checkForMentionPattern(text);
@@ -392,11 +371,9 @@ function InitialValuePlugin({ initialValue, initialState }: { initialValue?: str
         const root = $getRoot();
         if (root.getTextContent() === '') {
           if (initialState) {
-            // If we have a serialized state, use that
             const parsedState = JSON.parse(initialState);
             editor.setEditorState(editor.parseEditorState(parsedState));
           } else if (initialValue) {
-            // Otherwise use plain text
             const paragraph = $createParagraphNode();
             paragraph.append($createTextNode(initialValue));
             root.append(paragraph);
@@ -475,7 +452,6 @@ function LexicalEditor({
     });
   }, [onChange]);
 
-  // Add method to clear editor content
   const clearContent = useCallback(() => {
     if (editorInstance) {
       editorInstance.update(() => {
@@ -491,7 +467,9 @@ function LexicalEditor({
   const initialConfig = {
     namespace: "SocialPostEditor",
     theme,
-    onError: console.error,
+    onError: (error: Error) => {
+      console.error('Lexical Editor Error:', error);
+    },
     nodes: [MentionNode],
   };
 
@@ -537,22 +515,9 @@ function LexicalEditor({
         <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
         <ShortcutPlugin onSubmit={onSubmit} />
         {autoFocus && <AutoFocusPlugin />}
-        <EditorPlugin setEditor={setEditor} />
       </div>
     </LexicalComposer>
   );
-}
-
-function EditorPlugin({ setEditor }: { setEditor?: (editor: any) => void }) {
-  const [editor] = useLexicalComposerContext();
-
-  useEffect(() => {
-    if (setEditor) {
-      setEditor(editor);
-    }
-  }, [editor, setEditor]);
-
-  return null;
 }
 
 export default LexicalEditor;
