@@ -151,8 +151,13 @@ export default function MinimalistPostCard({
               updatePost.mutate(content);
             }
           }}
-          onClick={() => setIsEditing(true)}
-          disabled={!isOwner}
+          onClick={() => {
+            if (isOwner) {
+              setIsEditing(true);
+              textareaRef.current?.focus();
+            }
+          }}
+          readOnly={!isOwner}
           rows={1}
           style={{
             overflow: 'hidden',
