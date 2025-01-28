@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, KeyboardEvent } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
+import MinimalistPostCard from "@/components/minimalist-post-card";
 import PostFilter from "@/components/ui/post-filter";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
@@ -8,6 +9,7 @@ import type { Post, User, PostMention, Group, Friend } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
 import { useUser } from "@/hooks/use-user";
 import { useFriends } from "@/hooks/use-friends";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface PostFeedProps {
   userId?: number;
@@ -30,6 +32,7 @@ type PostWithDetails = Post & {
   liked: boolean;
   starred: boolean;
   privacy: string;
+  manualOrder?: number;
 };
 
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -48,11 +51,16 @@ export default function PostFeed({
 }: PostFeedProps) {
   const { user: currentUser } = useUser();
   const { data: friends } = useFriends();
+  const queryClient = useQueryClient();
+  const [activeView, setActiveView] = useState<'standard' | 'minimalist'>('standard');
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalShowStatusOnly, setInternalShowStatusOnly] = useState(false);
   const [internalShowStarredOnly, setInternalShowStarredOnly] = useState(false);
   const [internalSelectedStatuses, setInternalSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
+  );
+  const [sortOrder, setSortOrder] = useState<'dateCreated' | 'manual'>(
+    activeView === 'minimalist' ? 'manual' : 'dateCreated'
   );
 
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
@@ -92,17 +100,71 @@ export default function PostFeed({
     }
   };
 
+  const updatePostOrder = useMutation({
+    mutationFn: async ({ postId, newOrder }: { postId: number; newOrder: number }) => {
+      const res = await fetch(`/api/posts/${postId}/order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ manualOrder: newOrder }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ 
+        queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"]
+      });
+    },
+  });
+
+  const createPost = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          content,
+          groupId,
+          manualOrder: Date.now() // Use timestamp as initial order
+        }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ 
+        queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"]
+      });
+    },
+  });
+
   const { data: posts, isInitialLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
     staleTime: 5000,
   });
 
+  const handleViewChange = (view: 'standard' | 'minimalist') => {
+    setActiveView(view);
+    setSortOrder(view === 'minimalist' ? 'manual' : 'dateCreated');
+  };
+
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
 
-    let sorted = [...posts].sort((a, b) =>
-      new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
-    );
+    let sorted = [...posts];
+
+    // Apply sorting
+    if (sortOrder === 'manual') {
+      sorted.sort((a, b) => (a.manualOrder || 0) - (b.manualOrder || 0));
+    } else {
+      sorted.sort((a, b) =>
+        new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+      );
+    }
 
     sorted = sorted.filter(post => {
       if (post.groupId) return true;
@@ -119,7 +181,6 @@ export default function PostFeed({
       }
       return false;
     });
-
 
     if (showStarredOnly) {
       sorted = sorted.filter(post => post.starred);
@@ -138,7 +199,7 @@ export default function PostFeed({
     }
 
     return sorted;
-  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly, currentUser, friends]);
+  }, [posts, searchQuery, showStatusOnly, selectedStatuses, showStarredOnly, currentUser, friends, sortOrder]);
 
   const statusCounts = useMemo(() => {
     if (!posts) return {} as Record<Status, number>;
@@ -161,40 +222,82 @@ export default function PostFeed({
 
   return (
     <div className="space-y-6">
-      {showFilterBar && (
-        <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search posts..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <PostFilter
-            showStatusOnly={showStatusOnly}
-            onFilterChange={handleStatusOnlyChange}
-            selectedStatuses={selectedStatuses}
-            onStatusesChange={handleStatusesChange}
-            statusCounts={statusCounts}
-            showStarredOnly={showStarredOnly}
-            onStarredFilterChange={handleStarredOnlyChange}
-          />
+      <Tabs value={activeView} onValueChange={handleViewChange as any} className="w-full">
+        <div className="flex justify-between items-center">
+          <TabsList>
+            <TabsTrigger value="standard">Standard View</TabsTrigger>
+            <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
+          </TabsList>
         </div>
-      )}
 
-      {filteredPosts.length === 0 ? (
-        <p className="text-muted-foreground text-center py-8">
-          {searchQuery ? "No posts found matching your search." : "No posts yet"}
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {filteredPosts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-        </div>
-      )}
+        <TabsContent value="standard">
+          {showFilterBar && (
+            <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search posts..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <PostFilter
+                showStatusOnly={showStatusOnly}
+                onFilterChange={handleStatusOnlyChange}
+                selectedStatuses={selectedStatuses}
+                onStatusesChange={handleStatusesChange}
+                statusCounts={statusCounts}
+                showStarredOnly={showStarredOnly}
+                onStarredFilterChange={handleStarredOnlyChange}
+              />
+            </div>
+          )}
+
+          {filteredPosts.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">
+              {searchQuery ? "No posts found matching your search." : "No posts yet"}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {filteredPosts.map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="minimalist">
+          {filteredPosts.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">
+              {searchQuery ? "No posts found matching your search." : "No posts yet"}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {filteredPosts.map((post, index) => (
+                <MinimalistPostCard
+                  key={post.id}
+                  post={post}
+                  onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
+                  onCreatePost={(content, afterPostId) => {
+                    const prevPost = filteredPosts[index - 1];
+                    const nextPost = filteredPosts[index + 1];
+                    const newOrder = prevPost && nextPost
+                      ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
+                      : prevPost
+                        ? prevPost.manualOrder! + 1000
+                        : nextPost
+                          ? nextPost.manualOrder! - 1000
+                          : Date.now();
+
+                    createPost.mutate(content);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

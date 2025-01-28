@@ -51,7 +51,7 @@ export const userEmbeddings = pgTable("user_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Update posts table to include privacy field
+// Update posts table to include privacy field and manual ordering
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -61,6 +61,7 @@ export const posts = pgTable("posts", {
   starred: boolean("starred").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   privacy: text("privacy").notNull().default('public'),  // 'private', 'friends', 'public'
+  manualOrder: integer("manual_order"),
 });
 
 // Update postEmbeddings table definition to include onDelete cascade
