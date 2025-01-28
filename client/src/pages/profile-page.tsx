@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/dialog";
 import QRCode from "qrcode";
 import PostFeed from "@/components/post-feed";
+import { Tabs, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
+
 
 type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done'; // inferred type
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
@@ -54,6 +56,7 @@ export default function ProfilePage() {
   const [selectedStatuses, setSelectedStatuses] = useState<Status[]>(
     STATUSES.filter(status => status !== 'none')
   );
+  const [viewMode, setViewMode] = useState<'standard' | 'minimalist'>('standard');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, params] = useRoute("/profile/:id");
@@ -529,6 +532,12 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Posts</h2>
           <div className="flex items-center gap-4">
+            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'standard' | 'minimalist')}>
+              <TabsList>
+                <TabsTrigger value="standard">Standard View</TabsTrigger>
+                <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -558,6 +567,7 @@ export default function ProfilePage() {
         />
 
         <PostFeed
+          viewMode={viewMode}
           userId={user.id}
           searchQuery={searchQuery}
           showStatusOnly={showStatusOnly}
