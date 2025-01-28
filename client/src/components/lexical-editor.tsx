@@ -13,9 +13,6 @@ import {
   KEY_ENTER_COMMAND,
   $getSelection,
   $isRangeSelection,
-  $createRangeSelection,
-  $setSelection,
-  RangeSelection,
   SerializedTextNode,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -29,58 +26,53 @@ import { Command, Users } from "lucide-react";
 import type { Group } from "@db/schema";
 import { useCallback, useEffect, useState } from "react";
 
-interface SerializedMentionNode extends SerializedTextNode {
-  mentionName: string;
-  mentionType: 'user' | 'group';
-  type: 'mention';
+interface SerializedUserMentionNode extends SerializedTextNode {
+  username: string;
+  type: 'user-mention';
   version: 1;
 }
 
-export class MentionNode extends TextNode {
-  __mention: string;
-  __type: 'user' | 'group';
+interface SerializedGroupMentionNode extends SerializedTextNode {
+  groupName: string;
+  type: 'group-mention';
+  version: 1;
+}
+
+export class UserMentionNode extends TextNode {
+  __username: string;
 
   static getType(): string {
-    return 'mention';
+    return 'user-mention';
   }
 
-  static clone(node: MentionNode): MentionNode {
-    return new MentionNode(node.__mention, node.__type, node.__text, node.__key);
+  static clone(node: UserMentionNode): UserMentionNode {
+    return new UserMentionNode(node.__username, node.__key);
   }
 
-  constructor(mentionName: string, type: 'user' | 'group', text?: string, key?: NodeKey) {
-    super(text ?? `@${mentionName}`, key);
-    this.__mention = mentionName;
-    this.__type = type;
+  constructor(username: string, key?: NodeKey) {
+    super(`@${username}`, key);
+    this.__username = username;
   }
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
     dom.style.color = 'hsl(var(--primary))';
-    dom.style.fontWeight = this.__type === 'group' ? '600' : '500';
-    dom.classList.add('mention');
+    dom.style.fontWeight = '500';
+    dom.classList.add('mention', 'user-mention');
     return dom;
   }
 
-  isSegmented(): boolean {
-    return false;
-  }
-
-  exportJSON(): SerializedMentionNode {
+  exportJSON(): SerializedUserMentionNode {
     return {
       ...super.exportJSON(),
-      type: 'mention',
-      mentionName: this.__mention,
-      mentionType: this.__type,
+      type: 'user-mention',
+      username: this.__username,
       version: 1,
     };
   }
 
-  static importJSON(serializedNode: SerializedMentionNode): MentionNode {
-    const node = $createMentionNode(
-      serializedNode.mentionName,
-      serializedNode.mentionType
-    );
+  static importJSON(serializedNode: SerializedUserMentionNode): UserMentionNode {
+    const node = $createUserMentionNode(serializedNode.username);
     node.setTextContent(serializedNode.text);
     node.setFormat(serializedNode.format);
     node.setDetail(serializedNode.detail);
@@ -90,20 +82,65 @@ export class MentionNode extends TextNode {
   }
 }
 
-export function $createMentionNode(mentionName: string, type: 'user' | 'group'): MentionNode {
-  return new MentionNode(mentionName, type);
+export class GroupMentionNode extends TextNode {
+  __groupName: string;
+
+  static getType(): string {
+    return 'group-mention';
+  }
+
+  static clone(node: GroupMentionNode): GroupMentionNode {
+    return new GroupMentionNode(node.__groupName, node.__key);
+  }
+
+  constructor(groupName: string, key?: NodeKey) {
+    super(`@${groupName}`, key);
+    this.__groupName = groupName;
+  }
+
+  createDOM(config: any): HTMLElement {
+    const dom = super.createDOM(config);
+    dom.style.color = 'hsl(var(--primary))';
+    dom.style.fontWeight = '600';
+    dom.classList.add('mention', 'group-mention');
+    return dom;
+  }
+
+  exportJSON(): SerializedGroupMentionNode {
+    return {
+      ...super.exportJSON(),
+      type: 'group-mention',
+      groupName: this.__groupName,
+      version: 1,
+    };
+  }
+
+  static importJSON(serializedNode: SerializedGroupMentionNode): GroupMentionNode {
+    const node = $createGroupMentionNode(serializedNode.groupName);
+    node.setTextContent(serializedNode.text);
+    node.setFormat(serializedNode.format);
+    node.setDetail(serializedNode.detail);
+    node.setMode(serializedNode.mode);
+    node.setStyle(serializedNode.style);
+    return node;
+  }
 }
 
-export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNode {
-  return node instanceof MentionNode;
+export function $createUserMentionNode(username: string): UserMentionNode {
+  return new UserMentionNode(username);
 }
 
-const theme = {
-  text: {
-    base: "text-foreground",
-  },
-  mention: "text-primary font-medium",
-};
+export function $createGroupMentionNode(groupName: string): GroupMentionNode {
+  return new GroupMentionNode(groupName);
+}
+
+export function $isUserMentionNode(node: LexicalNode | null | undefined): node is UserMentionNode {
+  return node instanceof UserMentionNode;
+}
+
+export function $isGroupMentionNode(node: LexicalNode | null | undefined): node is GroupMentionNode {
+  return node instanceof GroupMentionNode;
+}
 
 interface MentionSuggestion {
   id: number;
@@ -188,7 +225,9 @@ function MentionsPlugin({
 
       if (mentionOffset === -1) return;
 
-      const mentionNode = $createMentionNode(suggestion.name, suggestion.type);
+      const mentionNode = suggestion.type === 'user' 
+        ? $createUserMentionNode(suggestion.name)
+        : $createGroupMentionNode(suggestion.name);
       const spaceNode = $createTextNode(' ');
       const textBeforeMention = textContent.slice(0, mentionOffset);
       const textNode = $createTextNode(textBeforeMention);
@@ -256,7 +295,7 @@ function MentionsPlugin({
         if (nodes.length === 0) return false;
 
         const firstNode = nodes[0];
-        if ($isMentionNode(firstNode)) {
+        if ($isUserMentionNode(firstNode) || $isGroupMentionNode(firstNode)) {
           firstNode.remove();
           return true;
         }
@@ -336,7 +375,7 @@ interface LexicalEditorProps {
 
 function LexicalEditor({
   onChange,
-  initialValue = "",
+  initialValue,
   initialState,
   users,
   groups = [],
@@ -354,11 +393,16 @@ function LexicalEditor({
 
   const initialConfig = {
     namespace: "SocialPostEditor",
-    theme,
+    theme: {
+      text: {
+        base: "text-foreground",
+      },
+      mention: "text-primary font-medium",
+    },
     onError: (error: Error) => {
       console.error('Lexical Editor Error:', error);
     },
-    nodes: [MentionNode],
+    nodes: [UserMentionNode, GroupMentionNode],
     editable: true,
   };
 
