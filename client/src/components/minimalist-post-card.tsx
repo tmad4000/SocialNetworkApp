@@ -18,12 +18,14 @@ interface MinimalistPostCardProps {
   };
   onOrderChange: (newOrder: number) => void;
   onCreatePost: (content: string) => void;
+  onDelete: () => void;
 }
 
 export default function MinimalistPostCard({ 
   post, 
   onOrderChange,
-  onCreatePost 
+  onCreatePost,
+  onDelete
 }: MinimalistPostCardProps) {
   const [content, setContent] = useState(post.content);
   const [isEditing, setIsEditing] = useState(false);
@@ -82,6 +84,12 @@ export default function MinimalistPostCard({
         onCreatePost("");
       }
     } else if (e.key === 'ArrowUp') {
+      if (e.metaKey && e.shiftKey) { // Cmd+Shift+Up
+        e.preventDefault();
+        onOrderChange(post.manualOrder! - 1000);
+        return;
+      }
+
       const textarea = e.currentTarget;
       if (textarea.selectionStart === 0) {
         // Move focus to previous post
@@ -97,6 +105,12 @@ export default function MinimalistPostCard({
         }
       }
     } else if (e.key === 'ArrowDown') {
+      if (e.metaKey && e.shiftKey) { // Cmd+Shift+Down
+        e.preventDefault();
+        onOrderChange(post.manualOrder! + 1000);
+        return;
+      }
+
       const textarea = e.currentTarget;
       if (textarea.selectionStart === textarea.value.length) {
         // Move focus to next post
@@ -114,6 +128,12 @@ export default function MinimalistPostCard({
     } else if (e.key === 'Escape') {
       setContent(post.content);
       setIsEditing(false);
+    } else if (e.key === 'Backspace') {
+      const textarea = e.currentTarget;
+      if (textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
+        e.preventDefault();
+        onDelete();
+      }
     }
   };
 

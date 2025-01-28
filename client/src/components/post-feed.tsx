@@ -167,6 +167,23 @@ export default function PostFeed({
     },
   });
 
+  const deletePost = useMutation({
+    mutationFn: async (postId: number) => {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"]
+      });
+    },
+  });
+
   const { data: posts, isInitialLoading } = useQuery<PostWithDetails[]>({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
     staleTime: 5000,
@@ -248,7 +265,11 @@ export default function PostFeed({
             <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
           </TabsList>
 
-          <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as 'dateCreated' | 'manual')}>
+          <Select 
+            value={sortOrder} 
+            onValueChange={(value) => setSortOrder(value as 'dateCreated' | 'manual')}
+            disabled={activeViewMode === 'minimalist'} 
+          >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
@@ -300,6 +321,7 @@ export default function PostFeed({
               key={post.id}
               post={post}
               onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
+              onDelete={() => deletePost.mutate(post.id)}
               onCreatePost={(content) => {
                 const prevPost = filteredPosts[index - 1];
                 const nextPost = filteredPosts[index + 1];
