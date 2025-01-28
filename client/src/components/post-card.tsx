@@ -86,6 +86,11 @@ export default function PostCard({ post }: PostCardProps) {
     staleTime: 60000,
   });
 
+  const { data: groups } = useQuery<Group[]>({
+    queryKey: ["/api/groups"],
+    staleTime: 60000,
+  });
+
   const editPost = useMutation({
     mutationFn: async (data: { content?: string; privacy?: string }) => {
       console.log('Updating post with data:', data); // Debug log
@@ -252,16 +257,27 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   const renderContent = (content: string) => {
-    const parts = content.split(/(@\w+)/g);
+    const parts = content.split(/(@[\w-]+)/g);
     return parts.map((part, index) => {
       if (part.startsWith('@')) {
-        const username = part.slice(1);
-        // Add null check for mentions array
-        const mention = post.mentions?.find(m => m.mentionedUser?.username === username);
-
-        if (mention) {
+        const name = part.slice(1);
+        // Check for user mention
+        const userMention = post.mentions?.find(m => m.mentionedUser?.username === name);
+        if (userMention) {
           return (
-            <Link key={index} href={`/profile/${mention.mentionedUser.id}`}>
+            <Link key={index} href={`/profile/${userMention.mentionedUser.id}`}>
+              <span className="text-primary hover:underline cursor-pointer">
+                {part}
+              </span>
+            </Link>
+          );
+        }
+
+        // Check for group mention
+        const groupMention = groups?.find(g => g.name === name);
+        if (groupMention) {
+          return (
+            <Link key={index} href={`/groups/${groupMention.id}`}>
               <span className="text-primary hover:underline cursor-pointer">
                 {part}
               </span>

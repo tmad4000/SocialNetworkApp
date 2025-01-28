@@ -25,32 +25,36 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Command } from "lucide-react";
+import { Command, Users } from "lucide-react";
+import type { Group } from "@db/schema";
 
-// Custom MentionNode implementation
+// Update MentionNode to support both users and groups
 export class MentionNode extends TextNode {
   __mention: string;
+  __type: 'user' | 'group';
 
   static getType(): string {
     return 'mention';
   }
 
   static clone(node: MentionNode): MentionNode {
-    return new MentionNode(node.__mention, node.__text, node.__key);
+    return new MentionNode(node.__mention, node.__type, node.__text, node.__key);
   }
 
-  constructor(mentionName: string, text?: string, key?: NodeKey) {
+  constructor(mentionName: string, type: 'user' | 'group', text?: string, key?: NodeKey) {
     super(text ?? `@${mentionName}`, key);
     this.__mention = mentionName;
+    this.__type = type;
   }
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
-    dom.style.color = 'hsl(var(--primary))';
+    dom.style.color = this.__type === 'group' ? 'hsl(var(--primary))' : 'hsl(var(--primary))';
     dom.style.fontWeight = '500';
     dom.style.whiteSpace = 'nowrap';
-    dom.classList.add('mention');
+    dom.classList.add('mention', `mention-${this.__type}`);
     dom.setAttribute('data-mention', this.__mention);
+    dom.setAttribute('data-mention-type', this.__type);
     return dom;
   }
 
@@ -101,13 +105,14 @@ export class MentionNode extends TextNode {
     return {
       ...super.exportJSON(),
       mentionName: this.__mention,
+      mentionType: this.__type,
       type: 'mention',
       version: 1,
     };
   }
 
   static importJSON(serializedNode: any): MentionNode {
-    const node = $createMentionNode(serializedNode.mentionName);
+    const node = $createMentionNode(serializedNode.mentionName, serializedNode.mentionType);
     node.setTextContent(serializedNode.text);
     node.setFormat(serializedNode.format);
     node.setDetail(serializedNode.detail);
@@ -117,8 +122,8 @@ export class MentionNode extends TextNode {
   }
 }
 
-export function $createMentionNode(mentionName: string): MentionNode {
-  return new MentionNode(mentionName);
+export function $createMentionNode(mentionName: string, type: 'user' | 'group'): MentionNode {
+  return new MentionNode(mentionName, type);
 }
 
 export function $isMentionNode(node: LexicalNode | null | undefined): boolean {
@@ -132,10 +137,23 @@ const theme = {
   mention: "text-primary font-medium",
 };
 
-function MentionsPlugin({ users }: { users: Array<{ id: number; username: string; avatar: string | null }> }) {
+interface MentionSuggestion {
+  id: number;
+  name: string;
+  type: 'user' | 'group';
+  avatar?: string | null;
+}
+
+function MentionsPlugin({
+  users,
+  groups
+}: {
+  users: Array<{ id: number; username: string; avatar: string | null }>;
+  groups: Array<{ id: number; name: string }>;
+}) {
   const [editor] = useLexicalComposerContext();
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredUsers, setFilteredUsers] = useState(users);
+  const [suggestions, setSuggestions] = useState<MentionSuggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
@@ -143,12 +161,30 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
   const checkForMentionPattern = (text: string) => {
     const match = text.match(/@(\w*)$/);
     if (match) {
-      const query = match[1];
-      const filtered = users.filter((user) =>
-        user.username.toLowerCase().includes(query.toLowerCase())
-      );
-      setFilteredUsers(filtered);
-      setShowSuggestions(filtered.length > 0);
+      const query = match[1].toLowerCase();
+
+      // Combine and filter both users and groups
+      const userSuggestions: MentionSuggestion[] = users
+        .filter(user => user.username.toLowerCase().includes(query))
+        .map(user => ({
+          id: user.id,
+          name: user.username,
+          type: 'user' as const,
+          avatar: user.avatar
+        }));
+
+      const groupSuggestions: MentionSuggestion[] = groups
+        .filter(group => group.name.toLowerCase().includes(query))
+        .map(group => ({
+          id: group.id,
+          name: group.name,
+          type: 'group' as const
+        }));
+
+      // Combine suggestions with groups first
+      const combined = [...groupSuggestions, ...userSuggestions];
+      setSuggestions(combined);
+      setShowSuggestions(combined.length > 0);
       setSelectedIndex(0);
 
       const selection = window.getSelection();
@@ -175,20 +211,20 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
     });
 
     return removeListener;
-  }, [editor, users]);
+  }, [editor, users, groups]);
 
   useEffect(() => {
     return editor.registerCommand(
       KEY_DOWN_COMMAND,
       (event: KeyboardEvent) => {
-        if (!showSuggestions || !filteredUsers.length) {
+        if (!showSuggestions || !suggestions.length) {
           return false;
         }
 
         if (event.key === 'ArrowDown') {
           event.preventDefault();
           setSelectedIndex((prev) =>
-            prev < filteredUsers.length - 1 ? prev + 1 : prev
+            prev < suggestions.length - 1 ? prev + 1 : prev
           );
           return true;
         }
@@ -201,8 +237,8 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault();
-          if (filteredUsers[selectedIndex]) {
-            insertMention(filteredUsers[selectedIndex].username);
+          if (suggestions[selectedIndex]) {
+            insertMention(suggestions[selectedIndex]);
           }
           return true;
         }
@@ -217,7 +253,7 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       },
       COMMAND_PRIORITY_CRITICAL,
     );
-  }, [editor, showSuggestions, filteredUsers, selectedIndex]);
+  }, [editor, showSuggestions, suggestions, selectedIndex]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -245,9 +281,9 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       },
       COMMAND_PRIORITY_CRITICAL,
     );
-  }, [editor, users]);
+  }, [editor, users, groups]);
 
-  const insertMention = (username: string) => {
+  const insertMention = (suggestion: MentionSuggestion) => {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -259,8 +295,8 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
 
       if (mentionOffset === -1) return;
 
-      // Create mention node
-      const mentionNode = $createMentionNode(username);
+      // Create mention node with type
+      const mentionNode = $createMentionNode(suggestion.name, suggestion.type);
       const spaceNode = $createTextNode(' ');
 
       // Split text and replace mention
@@ -285,26 +321,37 @@ function MentionsPlugin({ users }: { users: Array<{ id: number; username: string
       className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
       style={{ top: mentionPosition.top, left: mentionPosition.left }}
     >
-      {filteredUsers.length === 0 ? (
+      {suggestions.length === 0 ? (
         <div className="p-2 text-sm text-muted-foreground">
-          No users found
+          No results found
         </div>
       ) : (
         <div className="p-1">
-          {filteredUsers.map((user, index) => (
+          {suggestions.map((suggestion, index) => (
             <div
-              key={user.id}
+              key={`${suggestion.type}-${suggestion.id}`}
               className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
                 index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
               }`}
-              onClick={() => insertMention(user.username)}
+              onClick={() => insertMention(suggestion)}
               onMouseEnter={() => setSelectedIndex(index)}
             >
-              <Avatar className="h-6 w-6">
-                <AvatarImage src={user.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${user.username}`} />
-                <AvatarFallback>{user.username[0]}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm">{user.username}</span>
+              {suggestion.type === 'user' ? (
+                <Avatar className="h-6 w-6">
+                  <AvatarImage src={suggestion.avatar || `https://api.dicebear.com/7.x/avatars/svg?seed=${suggestion.name}`} />
+                  <AvatarFallback>{suggestion.name[0]}</AvatarFallback>
+                </Avatar>
+              ) : (
+                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-primary" />
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="text-sm">{suggestion.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {suggestion.type === 'user' ? 'User' : 'Group'}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -318,6 +365,7 @@ interface LexicalEditorProps {
   initialValue?: string;
   initialState?: string;
   users: Array<{ id: number; username: string; avatar: string | null }>;
+  groups?: Array<{ id: number; name: string }>;
   placeholder?: string;
   onClear?: () => void;
   onSubmit?: () => void;
@@ -400,6 +448,7 @@ function LexicalEditor({
   initialValue = "",
   initialState,
   users,
+  groups = [],
   placeholder,
   onClear,
   onSubmit,
@@ -457,16 +506,16 @@ function LexicalEditor({
           }
           placeholder={
             <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
-              <span>{placeholder || "What's on your mind? Use @ to mention users"}</span>
+              <span>{placeholder || "What's on your mind? Use @ to mention users or groups"}</span>
               {onSubmit && (
                 <span className="ml-2 text-sm opacity-50">
                   {isMac ? (
                     <>
                       <Command className="w-4 h-4 inline mb-0.5" />
-                      +Enter to {onSubmit ? 'post' : 'save'}
+                      +Enter to post
                     </>
                   ) : (
-                    <>Ctrl+Enter to {onSubmit ? 'post' : 'save'}</>
+                    <>Ctrl+Enter to post</>
                   )}
                 </span>
               )}
@@ -476,7 +525,7 @@ function LexicalEditor({
         />
         <OnChangePlugin onChange={onEditorChange} />
         <HistoryPlugin />
-        <MentionsPlugin users={users} />
+        <MentionsPlugin users={users} groups={groups} />
         <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
         <ShortcutPlugin onSubmit={onSubmit} />
         {autoFocus && <AutoFocusPlugin />}

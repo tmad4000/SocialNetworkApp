@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User, Group } from "@db/schema";
 import LexicalEditor from "./lexical-editor";
 import { $getRoot, $createParagraphNode } from 'lexical';
@@ -35,6 +35,11 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    staleTime: 60000,
+  });
+
+  const { data: groups } = useQuery<Group[]>({
+    queryKey: ["/api/groups"],
     staleTime: 60000,
   });
 
@@ -149,12 +154,10 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
 
   const handleSplitDecision = (shouldSplit: boolean) => {
     if (shouldSplit) {
-      // Create multiple posts
       pendingPosts.forEach(async (post) => {
         await createPost.mutateAsync(post);
       });
     } else {
-      // Create single post with original content
       createPost.mutate(pendingContent);
     }
     setPendingPosts([]);
@@ -265,6 +268,7 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
                 setEditorState(state || "");
               }}
               users={users || []}
+              groups={groups || []}
               placeholder={placeholderText}
               onSubmit={handleSubmit}
               setEditor={setEditor}
