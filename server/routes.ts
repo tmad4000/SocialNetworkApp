@@ -2121,6 +2121,123 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Invalid post ID");
     }
 
+    const { order } = req.body;
+    if (typeof order !== "number") {
+      return res.status(400).send("Order must be a number");
+    }
+
+    try {
+      // Update the post's manual order
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ manualOrder: order })
+        .where(eq(posts.id, postId))
+        .returning();
+
+      if (!updatedPost) {
+        return res.status(404).send("Post not found");
+      }
+
+      res.json(updatedPost);
+    } catch (error) {
+      console.error('Error updating post order:', error);
+      res.status(500).send("Error updating post order");
+    }
+  });
+
+  app.post("/api/posts/:id/star", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      // Check if post exists
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      // Toggle starred status
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ starred: sql`NOT ${posts.starred}` })
+        .where(eq(posts.id, postId))
+        .returning();
+
+      res.json({ starred: updatedPost.starred });
+    } catch (error) {
+      console.error('Error toggling star status:', error);
+      res.status(500).send("Error toggling star status");
+    }
+  });
+
+  // Add post follow/unfollow routes after the existing post routes
+  app.post("/api/posts/:id/follow", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    try {
+      // Check if post exists
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+      });
+
+      if (!post) {
+        return res.status(404).send("Post not found");
+      }
+
+      // Check if already following
+      const existingFollow = await db.query.postFollowers.findFirst({
+        where: and(
+          eq(postFollowers.postId, postId),
+          eq(postFollowers.userId, req.user.id)
+        ),
+      });
+
+      if (existingFollow) {
+        // Unfollow
+        await db
+          .delete(postFollowers)
+          .where(eq(postFollowers.id, existingFollow.id));
+        res.json({ following: false });
+      } else {
+        // Follow
+        await db.insert(postFollowers).values({
+          postId,
+          userId: req.user.id,
+        });
+        res.json({ following: true });
+      }
+    } catch (error) {
+      console.error('Error following/unfollowing post:', error);
+      res.status(500).send("Error following/unfollowing post");
+    }
+  });
+
+  app.get("/api/posts/:id/following", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
     try {
       const following = await db.query.postFollowers.findFirst({
         where: and(
