@@ -150,7 +150,7 @@ export default function MinimalistPostCard({
 
   return (
     <Card 
-      className={`transition-colors cursor-pointer ${isEditing ? 'border-primary' : ''}`}
+      className={`transition-colors cursor-pointer border-t-0 first:border-t rounded-none ${isEditing ? 'border-primary' : ''}`}
       onClick={() => {
         if (isOwner) {
           setIsEditing(true);

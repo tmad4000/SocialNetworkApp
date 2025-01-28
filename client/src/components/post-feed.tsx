@@ -276,7 +276,7 @@ export default function PostFeed({
           ))}
         </div>
       ) : (
-        <div className="space-y-0.5">
+        <div>
           {filteredPosts.map((post, index) => (
             <MinimalistPostCard
               key={post.id}
