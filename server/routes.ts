@@ -400,6 +400,7 @@ export function registerRoutes(app: Express): Server {
   });
 
 
+
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -986,7 +987,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Leave group
+  // Leave group - UPDATED
   app.post("/api/groups/:id/leave", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -998,33 +999,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      // Check if user is a member
-      const membership = await db.query.groupMembers.findFirst({
-        where: and(
-          eq(groupMembers.groupId, groupId),
-          eq(groupMembers.userId, req.user.id)
-        ),
-      });
-
-      if (!membership) {
-        return res.status(400).send("Not a member of this group");
-      }
-
-      // Check if user is the last admin
-      const group = await db.query.groups.findFirst({
-        where: eq(groups.id, groupId),
-        with: {
-          members: {
-            where: eq(groupMembers.role, 'admin'),
-          },
-        },
-      });
-
-      if (group?.members.length === 1 && group.members[0].userId === req.user.id) {
-        return res.status(400).send("Cannot leave group as last admin");
-      }
-
-      // Remove membership
+      // Remove user from group members
       await db
         .delete(groupMembers)
         .where(
@@ -1280,78 +1255,64 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add post creation endpoint - UPDATED
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
     }
 
-    const { content, targetUserId, groupId } = req.body;
-    if (!content) {
-      return res.status(400).send("Content is required");
-    }
+    const { content = "", targetUserId, groupId, privacy } = req.body;
 
     try {
-      // First create the post
+      // Get the highest manual order value
+      const [highestOrder] = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(manual_order), 0)` })
+        .from(posts);
+
+      // Create new post with manual order
       const [newPost] = await db
         .insert(posts)
         .values({
           content,
           userId: req.user.id,
-          status: 'none',
-          groupId: groupId, // Add group ID to the post if provided
+          groupId,
+          privacy: privacy || 'public',
+          manualOrder: highestOrder.maxOrder + 1000, // Leave gaps for reordering
         })
         .returning();
 
-      // Generate and store embedding for the new post
-      try {
-        const embedding = await generateEmbedding(content);
-        await db
-          .insert(postEmbeddings)
-          .values({
+      // Process mentions if content is not empty
+      if (content) {
+        const mentionedUsernames = extractMentions(content);
+        if (mentionedUsernames.length > 0) {
+          const mentionedUsers = await db
+            .select()
+            .from(users)
+            .where(inArray(users.username, mentionedUsernames));
+
+          if (mentionedUsers.length > 0) {
+            await db.insert(postMentions).values(
+              mentionedUsers.map((user) => ({
+                postId: newPost.id,
+                mentionedUserId: user.id,
+              }))
+            );
+          }
+        }
+
+        // Generate embedding only if content is not empty
+        try {
+          const embedding = await generateEmbedding(content);
+          await db.insert(postEmbeddings).values({
             postId: newPost.id,
             embedding,
-          })
-          .onConflictDoUpdate({
-            target: [postEmbeddings.postId],
-            set: { embedding }
           });
-        console.log(`Generated embedding for new post ${newPost.id}`);
-      } catch (error) {
-        console.error('Error generating embedding for new post:', error);
-      }
-
-      // Create mentions
-      if (targetUserId || content.match(/@(\w+)/g)) {
-        const mentionMatches = content.match(/@(\w+)/g) || [];
-        const mentionedUsernames = mentionMatches.map(match => match.substring(1));
-
-        // Find mentioned users
-        const mentionedUsers = await db.query.users.findMany({
-          where: inArray(users.username, mentionedUsernames),
-        });
-
-        const mentionsToCreate = [
-          ...mentionedUsers.map(user => ({
-            postId: newPost.id,
-            mentionedUserId: user.id,
-          }))
-        ];
-
-        // If posting on someone's timeline, add them as a mention
-        if (targetUserId && targetUserId !== req.user.id) {
-          mentionsToCreate.push({
-            postId: newPost.id,
-            mentionedUserId: targetUserId,
-          });
-        }
-
-        if (mentionsToCreate.length > 0) {
-          await db.insert(postMentions).values(mentionsToCreate);
+        } catch (embeddingError) {
+          console.error('Error generating post embedding:', embeddingError);
         }
       }
 
-      // Return post with mentions
-      const postWithMentions = await db.query.posts.findFirst({
+      const postWithDetails = await db.query.posts.findFirst({
         where: eq(posts.id, newPost.id),
         with: {
           user: {
@@ -1359,8 +1320,9 @@ export function registerRoutes(app: Express): Server {
               id: true,
               username: true,
               avatar: true,
-            },
+            }
           },
+          group: true,
           mentions: {
             with: {
               mentionedUser: {
@@ -1371,14 +1333,26 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          }
-        },
+          },
+          likes: true,
+        }
       });
 
-      res.json(postWithMentions);
+      if (!postWithDetails) {
+        throw new Error("Failed to fetch created post");
+      }
+
+      const transformedPost = {
+        ...postWithDetails,
+        likeCount: postWithDetails.likes.length,
+        liked: postWithDetails.likes.some(like => like.userId === req.user?.id),
+        likes: undefined,
+      };
+
+      res.json(transformedPost);
     } catch (error) {
       console.error('Error creating post:', error);
-      res.status(500).json({ message: "Error creating post" });
+      res.status(500).send("Error creating post");
     }
   });
 
@@ -2121,123 +2095,6 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).send("Invalid post ID");
     }
 
-    const { order } = req.body;
-    if (typeof order !== "number") {
-      return res.status(400).send("Order must be a number");
-    }
-
-    try {
-      // Update the post's manual order
-      const [updatedPost] = await db
-        .update(posts)
-        .set({ manualOrder: order })
-        .where(eq(posts.id, postId))
-        .returning();
-
-      if (!updatedPost) {
-        return res.status(404).send("Post not found");
-      }
-
-      res.json(updatedPost);
-    } catch (error) {
-      console.error('Error updating post order:', error);
-      res.status(500).send("Error updating post order");
-    }
-  });
-
-  app.post("/api/posts/:id/star", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
-    try {
-      // Check if post exists
-      const post = await db.query.posts.findFirst({
-        where: eq(posts.id, postId),
-      });
-
-      if (!post) {
-        return res.status(404).send("Post not found");
-      }
-
-      // Toggle starred status
-      const [updatedPost] = await db
-        .update(posts)
-        .set({ starred: sql`NOT ${posts.starred}` })
-        .where(eq(posts.id, postId))
-        .returning();
-
-      res.json({ starred: updatedPost.starred });
-    } catch (error) {
-      console.error('Error toggling star status:', error);
-      res.status(500).send("Error toggling star status");
-    }
-  });
-
-  // Add post follow/unfollow routes after the existing post routes
-  app.post("/api/posts/:id/follow", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
-    try {
-      // Check if post exists
-      const post = await db.query.posts.findFirst({
-        where: eq(posts.id, postId),
-      });
-
-      if (!post) {
-        return res.status(404).send("Post not found");
-      }
-
-      // Check if already following
-      const existingFollow = await db.query.postFollowers.findFirst({
-        where: and(
-          eq(postFollowers.postId, postId),
-          eq(postFollowers.userId, req.user.id)
-        ),
-      });
-
-      if (existingFollow) {
-        // Unfollow
-        await db
-          .delete(postFollowers)
-          .where(eq(postFollowers.id, existingFollow.id));
-        res.json({ following: false });
-      } else {
-        // Follow
-        await db.insert(postFollowers).values({
-          postId,
-          userId: req.user.id,
-        });
-        res.json({ following: true });
-      }
-    } catch (error) {
-      console.error('Error following/unfollowing post:', error);
-      res.status(500).send("Error following/unfollowing post");
-    }
-  });
-
-  app.get("/api/posts/:id/following", async (req, res) => {
-    if (!req.user) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
-    }
-
     try {
       const following = await db.query.postFollowers.findFirst({
         where: and(
@@ -2412,6 +2269,46 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Error fetching related posts" });
     }
   });
+
+  // Add the PUT endpoint for updating post order
+  app.put("/api/posts/:id/order", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    const { order } = req.body;
+    if (typeof order !== "number") {
+      return res.status(400).send("Order must be a number");
+    }
+
+    try {
+      // Update the post's manual order
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ manualOrder: order })
+        .where(eq(posts.id, postId))
+        .returning();
+
+      if (!updatedPost) {
+        return res.status(404).send("Post not found");
+      }
+
+      res.json(updatedPost);
+    } catch (error) {
+      console.error('Error updating post order:', error);
+      res.status(500).send("Error updating post order");
+    }
+  });
+
+  function extractMentions(text: string): string[] {
+    const mentions = text.match(/@(\w+)/g) || [];
+    return mentions.map(mention => mention.substring(1));
+  }
 
   return httpServer;
 }
