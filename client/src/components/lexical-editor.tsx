@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from "react";
 import {
   $getRoot,
   $createParagraphNode,
@@ -28,10 +27,13 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Command, Users } from "lucide-react";
 import type { Group } from "@db/schema";
+import { useCallback, useEffect, useState } from "react";
 
 interface SerializedMentionNode extends SerializedTextNode {
   mentionName: string;
   mentionType: 'user' | 'group';
+  type: 'mention';
+  version: 1;
 }
 
 export class MentionNode extends TextNode {
@@ -56,7 +58,7 @@ export class MentionNode extends TextNode {
     const dom = super.createDOM(config);
     dom.style.color = 'hsl(var(--primary))';
     dom.style.fontWeight = this.__type === 'group' ? '600' : '500';
-    dom.classList.add('mention', `mention-${this.__type}`);
+    dom.classList.add('mention');
     return dom;
   }
 
@@ -67,9 +69,9 @@ export class MentionNode extends TextNode {
   exportJSON(): SerializedMentionNode {
     return {
       ...super.exportJSON(),
+      type: 'mention',
       mentionName: this.__mention,
       mentionType: this.__type,
-      type: 'mention',
       version: 1,
     };
   }
@@ -92,7 +94,7 @@ export function $createMentionNode(mentionName: string, type: 'user' | 'group'):
   return new MentionNode(mentionName, type);
 }
 
-export function $isMentionNode(node: LexicalNode | null | undefined): boolean {
+export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNode {
   return node instanceof MentionNode;
 }
 
@@ -150,7 +152,6 @@ function MentionsPlugin({
       setShowSuggestions(combined.length > 0);
       setSelectedIndex(0);
 
-      // Get caret position for suggestions dropdown
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
@@ -244,7 +245,6 @@ function MentionsPlugin({
     );
   }, [editor, showSuggestions, suggestions, selectedIndex, insertMention]);
 
-  // Handle backspace command
   useEffect(() => {
     return editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
@@ -330,77 +330,8 @@ interface LexicalEditorProps {
   users: Array<{ id: number; username: string; avatar: string | null }>;
   groups?: Array<{ id: number; name: string }>;
   placeholder?: string;
-  onClear?: () => void;
   onSubmit?: () => void;
   autoFocus?: boolean;
-  setEditor?: (editor: any) => void;
-}
-
-function InitialValuePlugin({ initialValue, initialState }: { initialValue?: string; initialState?: string }) {
-  const [editor] = useLexicalComposerContext();
-  const [initialized, setInitialized] = useState(false);
-
-  useEffect(() => {
-    if (!initialized && (initialValue || initialState)) {
-      editor.update(() => {
-        const root = $getRoot();
-        if (root.getTextContent() === '') {
-          if (initialState) {
-            const parsedState = JSON.parse(initialState);
-            editor.setEditorState(editor.parseEditorState(parsedState));
-          } else if (initialValue) {
-            const paragraph = $createParagraphNode();
-            paragraph.append($createTextNode(initialValue));
-            root.append(paragraph);
-          }
-        }
-      });
-      setInitialized(true);
-    }
-  }, [editor, initialValue, initialState, initialized]);
-
-  return null;
-}
-
-function AutoFocusPlugin() {
-  const [editor] = useLexicalComposerContext();
-
-  useEffect(() => {
-    editor.focus();
-  }, [editor]);
-
-  return null;
-}
-
-function ShortcutPlugin({ onSubmit }: { onSubmit?: () => void }) {
-  const [editor] = useLexicalComposerContext();
-
-  useEffect(() => {
-    if (!onSubmit) return;
-
-    return editor.registerCommand(
-      KEY_ENTER_COMMAND,
-      (event: KeyboardEvent) => {
-        const isMac = navigator.platform.toLowerCase().includes('mac');
-        const isModifierPressed = isMac ? event.metaKey : event.ctrlKey;
-
-        if (isModifierPressed && !event.shiftKey) {
-          event.preventDefault();
-          onSubmit();
-          return true;
-        }
-
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL,
-    );
-  }, [editor, onSubmit]);
-
-  return null;
-}
-
-function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
 }
 
 function LexicalEditor({
@@ -410,10 +341,8 @@ function LexicalEditor({
   users,
   groups = [],
   placeholder,
-  onClear,
   onSubmit,
   autoFocus,
-  setEditor,
 }: LexicalEditorProps) {
   const onEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
@@ -430,15 +359,8 @@ function LexicalEditor({
       console.error('Lexical Editor Error:', error);
     },
     nodes: [MentionNode],
+    editable: true,
   };
-
-  useEffect(() => {
-    return () => {
-      if (setEditor) {
-        setEditor(null);
-      }
-    };
-  }, [setEditor]);
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
@@ -466,17 +388,88 @@ function LexicalEditor({
               )}
             </div>
           }
-          ErrorBoundary={LexicalErrorBoundary}
         />
         <OnChangePlugin onChange={onEditorChange} />
         <HistoryPlugin />
         <MentionsPlugin users={users} groups={groups} />
-        <InitialValuePlugin initialValue={initialValue} initialState={initialState} />
+        {initialValue && <InitialValuePlugin initialValue={initialValue} />}
+        {initialState && <InitialStatePlugin initialState={initialState} />}
         {autoFocus && <AutoFocusPlugin />}
-        <ShortcutPlugin onSubmit={onSubmit} />
+        {onSubmit && <ShortcutPlugin onSubmit={onSubmit} />}
       </div>
     </LexicalComposer>
   );
+}
+
+function InitialValuePlugin({ initialValue }: { initialValue: string }) {
+  const [editor] = useLexicalComposerContext();
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && initialValue) {
+      editor.update(() => {
+        const root = $getRoot();
+        if (root.getTextContent() === '') {
+          const paragraph = $createParagraphNode();
+          paragraph.append($createTextNode(initialValue));
+          root.append(paragraph);
+        }
+      });
+      setInitialized(true);
+    }
+  }, [editor, initialValue, initialized]);
+
+  return null;
+}
+
+function InitialStatePlugin({ initialState }: { initialState: string }) {
+  const [editor] = useLexicalComposerContext();
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && initialState) {
+      const parsedState = JSON.parse(initialState);
+      editor.setEditorState(editor.parseEditorState(parsedState));
+      setInitialized(true);
+    }
+  }, [editor, initialState, initialized]);
+
+  return null;
+}
+
+function AutoFocusPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editor.focus();
+  }, [editor]);
+
+  return null;
+}
+
+function ShortcutPlugin({ onSubmit }: { onSubmit: () => void }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event: KeyboardEvent) => {
+        const isMac = navigator.platform.toLowerCase().includes('mac');
+        const isModifierPressed = isMac ? event.metaKey : event.ctrlKey;
+
+        if (isModifierPressed && !event.shiftKey) {
+          event.preventDefault();
+          onSubmit();
+          return true;
+        }
+
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor, onSubmit]);
+
+  return null;
 }
 
 export default LexicalEditor;
