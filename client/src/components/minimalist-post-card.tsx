@@ -89,6 +89,10 @@ export default function MinimalistPostCard({
         if (prevTextarea) {
           e.preventDefault();
           (prevTextarea as HTMLTextAreaElement).focus();
+          const prevCard = prevTextarea.closest('.cursor-pointer');
+          if (prevCard) {
+            prevCard.dispatchEvent(new Event('click', { bubbles: true }));
+          }
           (prevTextarea as HTMLTextAreaElement).selectionStart = (prevTextarea as HTMLTextAreaElement).value.length;
         }
       }
@@ -100,6 +104,10 @@ export default function MinimalistPostCard({
         if (nextTextarea) {
           e.preventDefault();
           (nextTextarea as HTMLTextAreaElement).focus();
+          const nextCard = nextTextarea.closest('.cursor-pointer');
+          if (nextCard) {
+            nextCard.dispatchEvent(new Event('click', { bubbles: true }));
+          }
           (nextTextarea as HTMLTextAreaElement).selectionStart = 0;
         }
       }
