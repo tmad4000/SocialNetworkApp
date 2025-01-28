@@ -157,10 +157,10 @@ export default function MinimalistPostCard({
         }
       }}
     >
-      <CardContent className="p-1.5">
+      <CardContent className="p-0.5">
         <textarea
           ref={textareaRef}
-          className="w-full resize-none bg-transparent outline-none"
+          className="w-full resize-none bg-transparent outline-none px-2 py-1"
           value={content}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
