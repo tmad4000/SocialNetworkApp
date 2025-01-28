@@ -266,14 +266,14 @@ export default function PostCard({ post }: PostCardProps) {
         if (userMention) {
           return (
             <Link key={index} href={`/profile/${userMention.mentionedUser.id}`}>
-              <span className="text-primary hover:underline cursor-pointer">
+              <span className="text-muted-foreground hover:underline cursor-pointer">
                 {part}
               </span>
             </Link>
           );
         }
 
-        // Check for group mention
+        // Check for group mention - update styling here
         const groupMention = groups?.find(g => g.name === name);
         if (groupMention) {
           return (

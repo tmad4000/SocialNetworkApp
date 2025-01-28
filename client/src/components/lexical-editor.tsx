@@ -26,6 +26,7 @@ import { Command, Users } from "lucide-react";
 import type { Group } from "@db/schema";
 import { useCallback, useEffect, useState } from "react";
 
+// Node type definitions
 interface SerializedUserMentionNode extends SerializedTextNode {
   username: string;
   type: 'user-mention';
@@ -38,6 +39,7 @@ interface SerializedGroupMentionNode extends SerializedTextNode {
   version: 1;
 }
 
+// User mention node
 export class UserMentionNode extends TextNode {
   __username: string;
 
@@ -56,7 +58,7 @@ export class UserMentionNode extends TextNode {
 
   createDOM(config: any): HTMLElement {
     const dom = super.createDOM(config);
-    dom.style.color = 'hsl(var(--primary))';
+    dom.style.color = 'hsl(var(--muted-foreground))';
     dom.style.fontWeight = '500';
     dom.classList.add('mention', 'user-mention');
     return dom;
@@ -82,6 +84,7 @@ export class UserMentionNode extends TextNode {
   }
 }
 
+// Group mention node
 export class GroupMentionNode extends TextNode {
   __groupName: string;
 
@@ -126,6 +129,7 @@ export class GroupMentionNode extends TextNode {
   }
 }
 
+// Helper functions
 export function $createUserMentionNode(username: string): UserMentionNode {
   return new UserMentionNode(username);
 }
@@ -142,23 +146,17 @@ export function $isGroupMentionNode(node: LexicalNode | null | undefined): node 
   return node instanceof GroupMentionNode;
 }
 
-interface MentionSuggestion {
-  id: number;
-  name: string;
-  type: 'user' | 'group';
-  avatar?: string | null;
-}
-
+// Mentions plugin component
 function MentionsPlugin({
   users,
-  groups
+  groups,
 }: {
   users: Array<{ id: number; username: string; avatar: string | null }>;
   groups: Array<{ id: number; name: string }>;
 }) {
   const [editor] = useLexicalComposerContext();
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState<MentionSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ id: number; name: string; type: 'user' | 'group'; avatar?: string | null }>>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
@@ -167,7 +165,7 @@ function MentionsPlugin({
     if (match) {
       const query = match[1].toLowerCase();
 
-      const userSuggestions: MentionSuggestion[] = users
+      const userSuggestions = users
         .filter(user => user.username.toLowerCase().includes(query))
         .map(user => ({
           id: user.id,
@@ -176,7 +174,7 @@ function MentionsPlugin({
           avatar: user.avatar
         }));
 
-      const groupSuggestions: MentionSuggestion[] = groups
+      const groupSuggestions = groups
         .filter(group => group.name.toLowerCase().includes(query))
         .map(group => ({
           id: group.id,
@@ -213,7 +211,7 @@ function MentionsPlugin({
     });
   }, [editor, checkForMentionPattern]);
 
-  const insertMention = useCallback((suggestion: MentionSuggestion) => {
+  const insertMention = useCallback((suggestion: { name: string; type: 'user' | 'group' }) => {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -225,7 +223,7 @@ function MentionsPlugin({
 
       if (mentionOffset === -1) return;
 
-      const mentionNode = suggestion.type === 'user' 
+      const mentionNode = suggestion.type === 'user'
         ? $createUserMentionNode(suggestion.name)
         : $createGroupMentionNode(suggestion.name);
       const spaceNode = $createTextNode(' ');
@@ -246,16 +244,12 @@ function MentionsPlugin({
     return editor.registerCommand(
       KEY_DOWN_COMMAND,
       (event: KeyboardEvent) => {
-        if (!showSuggestions || !suggestions.length) {
-          return false;
-        }
+        if (!showSuggestions || !suggestions.length) return false;
 
         switch (event.key) {
           case 'ArrowDown':
             event.preventDefault();
-            setSelectedIndex((prev) =>
-              prev < suggestions.length - 1 ? prev + 1 : prev
-            );
+            setSelectedIndex((prev) => prev < suggestions.length - 1 ? prev + 1 : prev);
             return true;
 
           case 'ArrowUp':
@@ -311,12 +305,6 @@ function MentionsPlugin({
     );
   }, [editor, checkForMentionPattern]);
 
-  const handleMentionSelect = useCallback((suggestion: MentionSuggestion, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    insertMention(suggestion);
-  }, [insertMention]);
-
   return showSuggestions ? (
     <div
       className="absolute z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden max-h-48 overflow-y-auto"
@@ -334,7 +322,7 @@ function MentionsPlugin({
               className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer w-full text-left ${
                 index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
               }`}
-              onClick={(e) => handleMentionSelect(suggestion, e)}
+              onClick={() => insertMention(suggestion)}
               onMouseEnter={() => setSelectedIndex(index)}
               type="button"
             >
@@ -362,6 +350,7 @@ function MentionsPlugin({
   ) : null;
 }
 
+// Editor component props
 interface LexicalEditorProps {
   onChange?: (text: string, rawState?: string) => void;
   initialValue?: string;
@@ -373,6 +362,7 @@ interface LexicalEditorProps {
   autoFocus?: boolean;
 }
 
+// Main editor component
 function LexicalEditor({
   onChange,
   initialValue,
@@ -383,14 +373,6 @@ function LexicalEditor({
   onSubmit,
   autoFocus,
 }: LexicalEditorProps) {
-  const onEditorChange = useCallback((editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot();
-      const text = root.getTextContent();
-      onChange?.(text, JSON.stringify(editorState));
-    });
-  }, [onChange]);
-
   const initialConfig = {
     namespace: "SocialPostEditor",
     theme: {
@@ -408,43 +390,91 @@ function LexicalEditor({
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative min-h-[100px] w-full border rounded-md">
-        <PlainTextPlugin
-          contentEditable={
-            <ContentEditable
-              className="min-h-[100px] outline-none px-3 leading-[1.5] pt-3"
-            />
-          }
-          placeholder={
-            <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
-              <span>{placeholder || "What's on your mind? Use @ to mention users or groups"}</span>
-              {onSubmit && (
-                <span className="ml-2 text-sm opacity-50">
-                  {navigator.platform.toLowerCase().includes('mac') ? (
-                    <>
-                      <Command className="w-4 h-4 inline mb-0.5" />
-                      +Enter to post
-                    </>
-                  ) : (
-                    <>Ctrl+Enter to post</>
-                  )}
-                </span>
-              )}
-            </div>
-          }
-        />
-        <OnChangePlugin onChange={onEditorChange} />
-        <HistoryPlugin />
-        <MentionsPlugin users={users} groups={groups} />
-        {initialValue && <InitialValuePlugin initialValue={initialValue} />}
-        {initialState && <InitialStatePlugin initialState={initialState} />}
-        {autoFocus && <AutoFocusPlugin />}
-        {onSubmit && <ShortcutPlugin onSubmit={onSubmit} />}
-      </div>
+      <EditorContainer
+        onChange={onChange}
+        initialValue={initialValue}
+        initialState={initialState}
+        users={users}
+        groups={groups}
+        placeholder={placeholder}
+        onSubmit={onSubmit}
+        autoFocus={autoFocus}
+      />
     </LexicalComposer>
   );
 }
 
+// Container component that uses the context
+function EditorContainer({
+  onChange,
+  initialValue,
+  initialState,
+  users,
+  groups,
+  placeholder,
+  onSubmit,
+  autoFocus,
+}: LexicalEditorProps) {
+  const [editor] = useLexicalComposerContext();
+
+  const clearContent = useCallback(() => {
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+      const paragraph = $createParagraphNode();
+      root.append(paragraph);
+    });
+  }, [editor]);
+
+  const onEditorChange = useCallback((editorState: EditorState) => {
+    editorState.read(() => {
+      const root = $getRoot();
+      const text = root.getTextContent();
+      onChange?.(text, JSON.stringify(editorState));
+    });
+  }, [onChange]);
+
+  return (
+    <div className="relative min-h-[100px] w-full border rounded-md">
+      <PlainTextPlugin
+        contentEditable={
+          <ContentEditable
+            className="min-h-[100px] outline-none px-3 leading-[1.5] pt-3"
+          />
+        }
+        placeholder={
+          <div className="absolute top-0 left-3 text-muted-foreground pointer-events-none transform translate-y-3">
+            <span>{placeholder || "What's on your mind? Use @ to mention users or groups"}</span>
+            {onSubmit && (
+              <span className="ml-2 text-sm opacity-50">
+                {navigator.platform.toLowerCase().includes('mac') ? (
+                  <>
+                    <Command className="w-4 h-4 inline mb-0.5" />
+                    +Enter to post
+                  </>
+                ) : (
+                  <>Ctrl+Enter to post</>
+                )}
+              </span>
+            )}
+          </div>
+        }
+      />
+      <OnChangePlugin onChange={onEditorChange} />
+      <HistoryPlugin />
+      <MentionsPlugin users={users} groups={groups} />
+      {initialValue && <InitialValuePlugin initialValue={initialValue} />}
+      {initialState && <InitialStatePlugin initialState={initialState} />}
+      {autoFocus && <AutoFocusPlugin />}
+      {onSubmit && <ShortcutPlugin onSubmit={() => {
+        onSubmit();
+        clearContent();
+      }} />}
+    </div>
+  );
+}
+
+// Plugin components
 function InitialValuePlugin({ initialValue }: { initialValue: string }) {
   const [editor] = useLexicalComposerContext();
   const [initialized, setInitialized] = useState(false);
