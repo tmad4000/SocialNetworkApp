@@ -256,7 +256,8 @@ export default function PostCard({ post }: PostCardProps) {
     return parts.map((part, index) => {
       if (part.startsWith('@')) {
         const username = part.slice(1);
-        const mention = post.mentions.find(m => m.mentionedUser.username === username);
+        // Add null check for mentions array
+        const mention = post.mentions?.find(m => m.mentionedUser?.username === username);
 
         if (mention) {
           return (
@@ -268,7 +269,7 @@ export default function PostCard({ post }: PostCardProps) {
           );
         }
       }
-      return part;
+      return <span key={index}>{part}</span>;
     });
   };
 
@@ -281,7 +282,7 @@ export default function PostCard({ post }: PostCardProps) {
           children: post.content.split(/(@\w+)/g).map(part => {
             if (part.startsWith('@')) {
               const username = part.slice(1);
-              const mention = post.mentions.find(m => m.mentionedUser.username === username);
+              const mention = post.mentions?.find(m => m.mentionedUser?.username === username);
               if (mention) {
                 return {
                   type: "mention",
