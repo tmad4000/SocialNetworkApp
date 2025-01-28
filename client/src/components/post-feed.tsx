@@ -224,90 +224,84 @@ export default function PostFeed({
     );
   }
 
+  const renderPosts = () => {
+    if (filteredPosts.length === 0) {
+      return (
+        <p className="text-muted-foreground text-center py-8">
+          {searchQuery ? "No posts found matching your search." : "No posts yet"}
+        </p>
+      );
+    }
+
+    return activeViewMode === 'standard' ? (
+      <div className="space-y-4">
+        {filteredPosts.map((post) => (
+          <PostCard key={post.id} post={post} />
+        ))}
+      </div>
+    ) : (
+      <div className="space-y-2">
+        {filteredPosts.map((post, index) => (
+          <MinimalistPostCard
+            key={post.id}
+            post={post}
+            onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
+            onCreatePost={(content) => {
+              const prevPost = filteredPosts[index - 1];
+              const nextPost = filteredPosts[index + 1];
+              const newOrder = prevPost && nextPost
+                ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
+                : prevPost
+                  ? prevPost.manualOrder! + 1000
+                  : nextPost
+                    ? nextPost.manualOrder! - 1000
+                    : Date.now();
+
+              createPost.mutate(content);
+            }}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {!externalViewMode && (
-        <Tabs value={activeViewMode} onValueChange={handleViewChange} className="w-full">
+        <Tabs value={activeViewMode} onValueChange={(value) => setInternalViewMode(value as 'standard' | 'minimalist')} className="w-full">
           <div className="flex justify-between items-center">
             <TabsList>
               <TabsTrigger value="standard">Standard View</TabsTrigger>
               <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
             </TabsList>
           </div>
-
-          {activeViewMode === 'standard' && (
-            <TabsContent value="standard">
-              {showFilterBar && (
-                <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search posts..."
-                      value={searchQuery}
-                      onChange={(e) => handleSearchChange(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <PostFilter
-                    showStatusOnly={showStatusOnly}
-                    onFilterChange={handleStatusOnlyChange}
-                    selectedStatuses={selectedStatuses}
-                    onStatusesChange={handleStatusesChange}
-                    statusCounts={statusCounts}
-                    showStarredOnly={showStarredOnly}
-                    onStarredFilterChange={handleStarredOnlyChange}
-                  />
-                </div>
-              )}
-
-              {filteredPosts.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchQuery ? "No posts found matching your search." : "No posts yet"}
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {filteredPosts.map((post) => (
-                    <PostCard key={post.id} post={post} />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          )}
-
-          {activeViewMode === 'minimalist' && (
-            <TabsContent value="minimalist">
-              {filteredPosts.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchQuery ? "No posts found matching your search." : "No posts yet"}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {filteredPosts.map((post, index) => (
-                    <MinimalistPostCard
-                      key={post.id}
-                      post={post}
-                      onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
-                      onCreatePost={(content) => {
-                        const prevPost = filteredPosts[index - 1];
-                        const nextPost = filteredPosts[index + 1];
-                        const newOrder = prevPost && nextPost
-                          ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
-                          : prevPost
-                            ? prevPost.manualOrder! + 1000
-                            : nextPost
-                              ? nextPost.manualOrder! - 1000
-                              : Date.now();
-
-                        createPost.mutate(content);
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          )}
         </Tabs>
       )}
+
+      {showFilterBar && (
+        <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <PostFilter
+            showStatusOnly={showStatusOnly}
+            onFilterChange={handleStatusOnlyChange}
+            selectedStatuses={selectedStatuses}
+            onStatusesChange={handleStatusesChange}
+            statusCounts={statusCounts}
+            showStarredOnly={showStarredOnly}
+            onStarredFilterChange={handleStarredOnlyChange}
+          />
+        </div>
+      )}
+
+      {renderPosts()}
     </div>
   );
 }

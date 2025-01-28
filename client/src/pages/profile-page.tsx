@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,6 @@ import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Post, Friend, PostMention } from "@db/schema";
 import { Link } from "wouter";
-import { useState, useEffect, useMemo } from "react";
 import { SiLinkedin } from "react-icons/si";
 import PostFilter from "@/components/ui/post-filter";
 import {
@@ -24,10 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import QRCode from "qrcode";
 import PostFeed from "@/components/post-feed";
-import { Tabs, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-
-type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done'; // inferred type
+type Status = 'none' | 'not acknowledged' | 'acknowledged' | 'in progress' | 'done';
 const STATUSES: Status[] = ['none', 'not acknowledged', 'acknowledged', 'in progress', 'done'];
 
 type FriendWithRelations = Friend & {
@@ -532,7 +531,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Posts</h2>
           <div className="flex items-center gap-4">
-            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'standard' | 'minimalist')}>
+            <Tabs defaultValue={viewMode} onValueChange={(value) => setViewMode(value as 'standard' | 'minimalist')}>
               <TabsList>
                 <TabsTrigger value="standard">Standard View</TabsTrigger>
                 <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
