@@ -53,10 +53,10 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          content, 
-          targetUserId, 
-          groupId, 
+        body: JSON.stringify({
+          content,
+          targetUserId,
+          groupId,
           privacy
         }),
         credentials: "include",
@@ -211,53 +211,55 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
                   Posting in {group.name}
                 </div>
               )}
-              <div className={`ml-auto ${!groupId ? 'block' : 'hidden'}`}>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-foreground flex gap-2"
-                    >
-                      {renderPrivacyIcon()}
-                      <span className="text-sm">
-                        {privacy.charAt(0).toUpperCase() + privacy.slice(1)}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-40 p-0" align="end">
-                    <div className="space-y-1 p-1">
+              {!groupId && (
+                <div className="ml-auto">
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <Button
-                        variant={privacy === 'public' ? 'secondary' : 'ghost'}
+                        variant="ghost"
                         size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('public')}
+                        className="text-muted-foreground hover:text-foreground flex gap-2"
                       >
-                        <Globe className="h-4 w-4" />
-                        <span>Public</span>
+                        {renderPrivacyIcon()}
+                        <span className="text-sm">
+                          {privacy.charAt(0).toUpperCase() + privacy.slice(1)}
+                        </span>
                       </Button>
-                      <Button
-                        variant={privacy === 'friends' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('friends')}
-                      >
-                        <Users className="h-4 w-4" />
-                        <span>Friends</span>
-                      </Button>
-                      <Button
-                        variant={privacy === 'private' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setPrivacy('private')}
-                      >
-                        <Lock className="h-4 w-4" />
-                        <span>Private</span>
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 p-0" align="end">
+                      <div className="space-y-1 p-1">
+                        <Button
+                          variant={privacy === 'public' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('public')}
+                        >
+                          <Globe className="h-4 w-4" />
+                          <span>Public</span>
+                        </Button>
+                        <Button
+                          variant={privacy === 'friends' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('friends')}
+                        >
+                          <Users className="h-4 w-4" />
+                          <span>Friends</span>
+                        </Button>
+                        <Button
+                          variant={privacy === 'private' ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPrivacy('private')}
+                        >
+                          <Lock className="h-4 w-4" />
+                          <span>Private</span>
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
             </div>
 
             <LexicalEditor

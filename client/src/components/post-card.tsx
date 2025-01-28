@@ -278,7 +278,7 @@ export default function PostCard({ post }: PostCardProps) {
         if (groupMention) {
           return (
             <Link key={index} href={`/groups/${groupMention.id}`}>
-              <span className="text-primary hover:underline cursor-pointer">
+              <span className="font-semibold text-primary hover:underline cursor-pointer">
                 {part}
               </span>
             </Link>
