@@ -35,24 +35,27 @@ type RelatedPost = Post & {
 
 export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [selectedPosts, setSelectedPosts] = useState<Array<{ id: number, content: string }>>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const commandRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Handle click outside
+    // Handle click outside for Command component only
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+      if (commandRef.current && !commandRef.current.contains(event.target as Node)) {
+        setIsCommandOpen(false);
+        setSearchText("");
       }
     }
 
     // Handle escape key
     function handleEscapeKey(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setIsOpen(false);
+        setIsCommandOpen(false);
+        setSearchText("");
       }
     }
 
@@ -67,16 +70,16 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
 
   const { data: relatedPosts, isLoading: relatedLoading } = useQuery<RelatedPost[]>({
     queryKey: [`/api/posts/${postId}/related`],
-    enabled: isOpen, // Only fetch when dropdown is open
-    staleTime: 60000, // Consider data fresh for 1 minute
-    cacheTime: 300000, // Keep in cache for 5 minutes
+    enabled: isOpen,
+    staleTime: 60000,
+    gcTime: 300000,
   });
 
   const { data: allPosts } = useQuery<Post[]>({
     queryKey: ["/api/posts"],
-    enabled: isOpen && searchText.length > 0, // Only fetch when dropdown is open and searching
+    enabled: isOpen && searchText.length > 0,
     staleTime: 60000,
-    cacheTime: 300000,
+    gcTime: 300000,
   });
 
   const addRelatedPost = useMutation({
@@ -107,6 +110,7 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
         description: "Related post added successfully",
       });
       setSearchText("");
+      setIsCommandOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -117,18 +121,25 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
     },
   });
 
-  const filteredPosts = allPosts?.filter(post => 
-    post.id !== postId && 
-    post.content.toLowerCase().includes(searchText.toLowerCase()) &&
-    !selectedPosts.some(sp => sp.id === post.id)
-  ) || [];
+  // Filter out duplicates and already selected posts
+  const uniquePosts = new Set();
+  const filteredPosts = allPosts?.filter(post => {
+    if (post.id === postId || selectedPosts.some(sp => sp.id === post.id) || uniquePosts.has(post.id)) {
+      return false;
+    }
+    if (post.content.toLowerCase().includes(searchText.toLowerCase())) {
+      uniquePosts.add(post.id);
+      return true;
+    }
+    return false;
+  }) || [];
 
   const handleOpenPost = useCallback((postId: number) => {
     window.open(`/post/${postId}`, '_blank');
   }, []);
 
   return (
-    <div ref={dropdownRef}>
+    <div>
       {!isOpen ? (
         <Button
           variant="ghost"
@@ -157,32 +168,42 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                 {/* Manual Related Posts Section */}
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium text-muted-foreground">Related Posts</h4>
-                  <Command className="rounded-lg border shadow-md">
-                    <CommandInput
-                      placeholder="Search for a post..."
-                      value={searchText}
-                      onValueChange={setSearchText}
-                    />
-                    <CommandList>
-                      <CommandEmpty>No posts found</CommandEmpty>
-                      <CommandGroup>
-                        <ScrollArea className="h-[200px]">
-                          {filteredPosts.map(post => (
-                            <CommandItem
-                              key={post.id}
-                              onSelect={() => {
-                                addRelatedPost.mutate(post.id);
-                              }}
-                            >
-                              <span className="truncate">
-                                {post.content.substring(0, 50)}...
-                              </span>
-                            </CommandItem>
-                          ))}
-                        </ScrollArea>
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
+                  <div ref={commandRef}>
+                    <Command
+                      className="rounded-lg border shadow-md"
+                      shouldFilter={false} // Prevent default filtering
+                    >
+                      <CommandInput
+                        placeholder="Search for a post..."
+                        value={searchText}
+                        onValueChange={(value) => {
+                          setSearchText(value);
+                          setIsCommandOpen(true);
+                        }}
+                      />
+                      {isCommandOpen && (
+                        <CommandList>
+                          <CommandEmpty>No posts found</CommandEmpty>
+                          <CommandGroup>
+                            <ScrollArea className="h-[200px]">
+                              {filteredPosts.map(post => (
+                                <CommandItem
+                                  key={post.id}
+                                  onSelect={() => {
+                                    addRelatedPost.mutate(post.id);
+                                  }}
+                                >
+                                  <span className="truncate">
+                                    {post.content.substring(0, 50)}...
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </ScrollArea>
+                          </CommandGroup>
+                        </CommandList>
+                      )}
+                    </Command>
+                  </div>
 
                   <div className="flex flex-wrap gap-2">
                     {selectedPosts.map(post => (
