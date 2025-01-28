@@ -10,6 +10,14 @@ import type { Status } from "@/components/ui/status-pill";
 import { useUser } from "@/hooks/use-user";
 import { useFriends } from "@/hooks/use-friends";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface PostFeedProps {
   userId?: number;
@@ -239,6 +247,16 @@ export default function PostFeed({
             <TabsTrigger value="standard">Standard View</TabsTrigger>
             <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
           </TabsList>
+
+          <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as 'dateCreated' | 'manual')}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dateCreated">Date Created</SelectItem>
+              <SelectItem value="manual">Manual Order</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </Tabs>
 
