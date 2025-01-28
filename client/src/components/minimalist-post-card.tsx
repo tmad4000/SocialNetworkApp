@@ -17,7 +17,7 @@ interface MinimalistPostCardProps {
     manualOrder?: number;
   };
   onOrderChange: (newOrder: number) => void;
-  onCreatePost: (content: string, afterPostId: number) => void;
+  onCreatePost: (content: string) => void;
 }
 
 export default function MinimalistPostCard({ 
@@ -78,7 +78,7 @@ export default function MinimalistPostCard({
       } else {
         // Enter: Create new post
         e.preventDefault();
-        onCreatePost("", post.id);
+        onCreatePost("");
       }
     } else if (e.key === 'ArrowUp') {
       const textarea = e.currentTarget;
@@ -151,6 +151,7 @@ export default function MinimalistPostCard({
               updatePost.mutate(content);
             }
           }}
+          onClick={() => setIsEditing(true)}
           disabled={!isOwner}
           rows={1}
           style={{
