@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, ChevronUp, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Command,
   CommandEmpty,
@@ -37,6 +36,28 @@ type RelatedPost = Post & {
   privacy: string;
 };
 
+// Helper function to highlight matching text
+function HighlightedText({ text, highlight }: { text: string; highlight: string }) {
+  if (!highlight.trim()) {
+    return <span>{text}</span>;
+  }
+
+  const regex = new RegExp(`(${highlight})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <span>
+      {parts.map((part, i) => 
+        regex.test(part) ? (
+          <span key={i} className="bg-yellow-100 dark:bg-yellow-800">{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+}
+
 export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
@@ -48,7 +69,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   const commandRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Handle click outside for Command component only
     function handleClickOutside(event: MouseEvent) {
       if (commandRef.current && !commandRef.current.contains(event.target as Node)) {
         setIsCommandOpen(false);
@@ -56,7 +76,6 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
       }
     }
 
-    // Handle escape key
     function handleEscapeKey(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsCommandOpen(false);
@@ -133,20 +152,23 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
   });
 
   // Filter out duplicates and already selected posts
+  const searchTextLower = searchText.toLowerCase();
   const seenPosts = new Set([postId, ...selectedPosts.map(sp => sp.id)]);
-  const filteredPosts = allPosts?.filter(post => {
+  const filteredPosts = allPosts?.reduce<Post[]>((acc, post) => {
     // Skip if already seen or selected
     if (seenPosts.has(post.id)) {
-      return false;
+      return acc;
     }
 
-    // Add to seen posts and check content match
-    if (post.content.toLowerCase().includes(searchText.toLowerCase())) {
+    // Check content match
+    const contentLower = post.content.toLowerCase();
+    if (contentLower.includes(searchTextLower)) {
       seenPosts.add(post.id);
-      return true;
+      acc.push(post);
     }
-    return false;
-  }) || [];
+
+    return acc;
+  }, []) || [];
 
   const handleOpenPost = useCallback((postId: number) => {
     setSelectedPostForModal(postId);
@@ -207,9 +229,10 @@ export default function RelatedPosts({ postId, groupId, userId }: RelatedPostsPr
                                     addRelatedPost.mutate(post.id);
                                   }}
                                 >
-                                  <span className="truncate">
-                                    {post.content.substring(0, 50)}...
-                                  </span>
+                                  <HighlightedText 
+                                    text={post.content.substring(0, 100)} 
+                                    highlight={searchText}
+                                  />
                                 </CommandItem>
                               ))}
                             </ScrollArea>
