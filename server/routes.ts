@@ -1255,7 +1255,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Create post endpoint - updated to handle group posts correctly
+  // Create post endpoint
   app.post("/api/posts", async (req, res) => {
     if (!req.user) {
       return res.status(401).send("Not authenticated");
@@ -1282,6 +1282,11 @@ export function registerRoutes(app: Express): Server {
         }
       }
 
+      // Get the highest manual order value for ordering
+      const [highestOrder] = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(manual_order), 0)` })
+        .from(posts);
+
       // Create the post
       const [newPost] = await db
         .insert(posts)
@@ -1290,12 +1295,44 @@ export function registerRoutes(app: Express): Server {
           userId: req.user.id,
           groupId: groupId || null,
           privacy: groupId ? "public" : privacy,
+          manualOrder: highestOrder.maxOrder + 1000,
           status: "none",
         })
         .returning();
 
-      // Get full post data with relations
-      const post = await db.query.posts.findFirst({
+      // Process mentions if content is not empty
+      if (content) {
+        const mentionedUsernames = content.match(/@(\w+)/g)?.map(mention => mention.slice(1)) || [];
+        if (mentionedUsernames.length > 0) {
+          const mentionedUsers = await db
+            .select()
+            .from(users)
+            .where(inArray(users.username, mentionedUsernames));
+
+          if (mentionedUsers.length > 0) {
+            await db.insert(postMentions).values(
+              mentionedUsers.map((user) => ({
+                postId: newPost.id,
+                mentionedUserId: user.id,
+              }))
+            );
+          }
+        }
+
+        // Generate embedding
+        try {
+          const embedding = await generateEmbedding(content);
+          await db.insert(postEmbeddings).values({
+            postId: newPost.id,
+            embedding,
+          });
+        } catch (embeddingError) {
+          console.error('Error generating post embedding:', embeddingError);
+        }
+      }
+
+      // Get full post data
+      const createdPost = await db.query.posts.findFirst({
         where: eq(posts.id, newPost.id),
         with: {
           user: {
@@ -1305,10 +1342,9 @@ export function registerRoutes(app: Express): Server {
               avatar: true,
             }
           },
-          group: true,
           mentions: {
             with: {
-              user: {
+              mentionedUser: {
                 columns: {
                   id: true,
                   username: true,
@@ -1316,11 +1352,24 @@ export function registerRoutes(app: Express): Server {
                 }
               }
             }
-          }
+          },
+          likes: true,
         }
       });
 
-      res.json(post);
+      if (!createdPost) {
+        throw new Error("Failed to fetch created post");
+      }
+
+      // Transform the response
+      const transformedPost = {
+        ...createdPost,
+        likeCount: createdPost.likes.length,
+        liked: createdPost.likes.some(like => like.userId === req.user?.id),
+        likes: undefined, // Remove likes array from response
+      };
+
+      res.json(transformedPost);
     } catch (error) {
       console.error('Error creating post:', error);
       res.status(500).send("Error creating post");
@@ -2062,7 +2111,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     const postId = parseInt(req.params.id);
-    if (isNaN(postId)) {
+    if(isNaN(postId)) {
       return res.status(400).send("Invalid post ID");
     }
 
