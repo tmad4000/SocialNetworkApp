@@ -9,7 +9,7 @@ import type { Post, User, PostMention, Group } from "@db/schema";
 import type { Status } from "@/components/ui/status-pill";
 import { useUser } from "@/hooks/use-user";
 import { useFriends } from "@/hooks/use-friends";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface PostFeedProps {
   userId?: number;
@@ -23,6 +23,7 @@ interface PostFeedProps {
   onStarredOnlyChange?: (show: boolean) => void;
   onStatusesChange?: (statuses: Status[]) => void;
   viewMode?: 'standard' | 'minimalist';
+  onViewModeChange?: (mode: 'standard' | 'minimalist') => void;
 }
 
 type PostWithDetails = Post & {
@@ -50,6 +51,7 @@ export default function PostFeed({
   onStarredOnlyChange,
   onStatusesChange,
   viewMode: externalViewMode,
+  onViewModeChange,
 }: PostFeedProps) {
   const { user: currentUser } = useUser();
   const { data: friends } = useFriends();
@@ -106,6 +108,15 @@ export default function PostFeed({
     }
   };
 
+  const handleViewModeChange = (value: string) => {
+    const newMode = value as 'standard' | 'minimalist';
+    if (onViewModeChange) {
+      onViewModeChange(newMode);
+    } else {
+      setInternalViewMode(newMode);
+    }
+  };
+
   const updatePostOrder = useMutation({
     mutationFn: async ({ postId, newOrder }: { postId: number; newOrder: number }) => {
       const res = await fetch(`/api/posts/${postId}/order`, {
@@ -152,10 +163,6 @@ export default function PostFeed({
     queryKey: [groupId ? `/api/groups/${groupId}/posts` : userId ? `/api/posts/user/${userId}` : "/api/posts"],
     staleTime: 5000,
   });
-
-  const handleViewChange = (view: string) => {
-    setInternalViewMode(view as 'standard' | 'minimalist');
-  };
 
   const filteredPosts = useMemo(() => {
     if (!posts) return [];
@@ -224,59 +231,16 @@ export default function PostFeed({
     );
   }
 
-  const renderPosts = () => {
-    if (filteredPosts.length === 0) {
-      return (
-        <p className="text-muted-foreground text-center py-8">
-          {searchQuery ? "No posts found matching your search." : "No posts yet"}
-        </p>
-      );
-    }
-
-    return activeViewMode === 'standard' ? (
-      <div className="space-y-4">
-        {filteredPosts.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))}
-      </div>
-    ) : (
-      <div className="space-y-2">
-        {filteredPosts.map((post, index) => (
-          <MinimalistPostCard
-            key={post.id}
-            post={post}
-            onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
-            onCreatePost={(content) => {
-              const prevPost = filteredPosts[index - 1];
-              const nextPost = filteredPosts[index + 1];
-              const newOrder = prevPost && nextPost
-                ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
-                : prevPost
-                  ? prevPost.manualOrder! + 1000
-                  : nextPost
-                    ? nextPost.manualOrder! - 1000
-                    : Date.now();
-
-              createPost.mutate(content);
-            }}
-          />
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
-      {!externalViewMode && (
-        <Tabs value={activeViewMode} onValueChange={(value) => setInternalViewMode(value as 'standard' | 'minimalist')} className="w-full">
-          <div className="flex justify-between items-center">
-            <TabsList>
-              <TabsTrigger value="standard">Standard View</TabsTrigger>
-              <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
-            </TabsList>
-          </div>
-        </Tabs>
-      )}
+      <Tabs value={activeViewMode} onValueChange={handleViewModeChange} className="w-full">
+        <div className="flex justify-between items-center">
+          <TabsList>
+            <TabsTrigger value="standard">Standard View</TabsTrigger>
+            <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
+          </TabsList>
+        </div>
+      </Tabs>
 
       {showFilterBar && (
         <div className="flex items-center justify-between px-4 py-4 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
@@ -301,7 +265,40 @@ export default function PostFeed({
         </div>
       )}
 
-      {renderPosts()}
+      {filteredPosts.length === 0 ? (
+        <p className="text-muted-foreground text-center py-8">
+          {searchQuery ? "No posts found matching your search." : "No posts yet"}
+        </p>
+      ) : activeViewMode === 'standard' ? (
+        <div className="space-y-4">
+          {filteredPosts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredPosts.map((post, index) => (
+            <MinimalistPostCard
+              key={post.id}
+              post={post}
+              onOrderChange={(newOrder) => updatePostOrder.mutate({ postId: post.id, newOrder })}
+              onCreatePost={(content) => {
+                const prevPost = filteredPosts[index - 1];
+                const nextPost = filteredPosts[index + 1];
+                const newOrder = prevPost && nextPost
+                  ? (prevPost.manualOrder! + nextPost.manualOrder!) / 2
+                  : prevPost
+                    ? prevPost.manualOrder! + 1000
+                    : nextPost
+                      ? nextPost.manualOrder! - 1000
+                      : Date.now();
+
+                createPost.mutate(content);
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

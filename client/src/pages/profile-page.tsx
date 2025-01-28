@@ -530,32 +530,6 @@ export default function ProfilePage() {
         <Separator className="my-8" />
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Posts</h2>
-          <div className="flex items-center gap-4">
-            <Tabs defaultValue={viewMode} onValueChange={(value) => setViewMode(value as 'standard' | 'minimalist')}>
-              <TabsList>
-                <TabsTrigger value="standard">Standard View</TabsTrigger>
-                <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search posts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <PostFilter
-              showStatusOnly={showStatusOnly}
-              onFilterChange={setShowStatusOnly}
-              selectedStatuses={selectedStatuses}
-              onStatusesChange={setSelectedStatuses}
-              statusCounts={statusCounts}
-              showStarredOnly={showStarredOnly}
-              onStarredFilterChange={setShowStarredOnly}
-            />
-          </div>
         </div>
 
         <CreatePost
@@ -567,6 +541,7 @@ export default function ProfilePage() {
 
         <PostFeed
           viewMode={viewMode}
+          onViewModeChange={setViewMode}
           userId={user.id}
           searchQuery={searchQuery}
           showStatusOnly={showStatusOnly}
