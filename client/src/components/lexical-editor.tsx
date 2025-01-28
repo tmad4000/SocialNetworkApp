@@ -158,7 +158,7 @@ function MentionsPlugin({
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   // Helper function to check for @ pattern and update suggestions
-  const checkForMentionPattern = (text: string) => {
+  const checkForMentionPattern = useCallback((text: string) => {
     const match = text.match(/@(\w*)$/);
     if (match) {
       const query = match[1].toLowerCase();
@@ -203,7 +203,7 @@ function MentionsPlugin({
     } else {
       setShowSuggestions(false);
     }
-  };
+  }, [editor, users, groups]);
 
   useEffect(() => {
     const removeListener = editor.registerTextContentListener((text) => {
@@ -211,79 +211,9 @@ function MentionsPlugin({
     });
 
     return removeListener;
-  }, [editor, users, groups]);
+  }, [editor, checkForMentionPattern]);
 
-  useEffect(() => {
-    return editor.registerCommand(
-      KEY_DOWN_COMMAND,
-      (event: KeyboardEvent) => {
-        if (!showSuggestions || !suggestions.length) {
-          return false;
-        }
-
-        if (event.key === 'ArrowDown') {
-          event.preventDefault();
-          setSelectedIndex((prev) =>
-            prev < suggestions.length - 1 ? prev + 1 : prev
-          );
-          return true;
-        }
-
-        if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
-          return true;
-        }
-
-        if (event.key === 'Enter' || event.key === 'Tab') {
-          event.preventDefault();
-          if (suggestions[selectedIndex]) {
-            insertMention(suggestions[selectedIndex]);
-          }
-          return true;
-        }
-
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          setShowSuggestions(false);
-          return true;
-        }
-
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL,
-    );
-  }, [editor, showSuggestions, suggestions, selectedIndex]);
-
-  useEffect(() => {
-    return editor.registerCommand(
-      KEY_BACKSPACE_COMMAND,
-      () => {
-        const selection = $getSelection();
-        if (!$isRangeSelection(selection)) return false;
-
-        const nodes = selection.getNodes();
-        if (nodes.length === 0) return false;
-
-        const firstNode = nodes[0];
-        if ($isMentionNode(firstNode)) {
-          firstNode.remove();
-          return true;
-        }
-
-        // Check for @ pattern after backspace
-        editor.getEditorState().read(() => {
-          const text = firstNode.getTextContent();
-          checkForMentionPattern(text);
-        });
-
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL,
-    );
-  }, [editor, users, groups]);
-
-  const insertMention = (suggestion: MentionSuggestion) => {
+  const insertMention = useCallback((suggestion: MentionSuggestion) => {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -315,7 +245,83 @@ function MentionsPlugin({
       editor.focus();
     });
     setShowSuggestions(false);
-  };
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      (event: KeyboardEvent) => {
+        if (!showSuggestions || !suggestions.length) {
+          return false;
+        }
+
+        switch (event.key) {
+          case 'ArrowDown':
+            event.preventDefault();
+            setSelectedIndex((prev) =>
+              prev < suggestions.length - 1 ? prev + 1 : prev
+            );
+            return true;
+
+          case 'ArrowUp':
+            event.preventDefault();
+            setSelectedIndex((prev) => prev > 0 ? prev - 1 : prev);
+            return true;
+
+          case 'Enter':
+          case 'Tab':
+            event.preventDefault();
+            if (suggestions[selectedIndex]) {
+              insertMention(suggestions[selectedIndex]);
+            }
+            return true;
+
+          case 'Escape':
+            event.preventDefault();
+            setShowSuggestions(false);
+            return true;
+
+          default:
+            return false;
+        }
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor, showSuggestions, suggestions, selectedIndex, insertMention]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return false;
+
+        const nodes = selection.getNodes();
+        if (nodes.length === 0) return false;
+
+        const firstNode = nodes[0];
+        if ($isMentionNode(firstNode)) {
+          firstNode.remove();
+          return true;
+        }
+
+        // Check for @ pattern after backspace
+        editor.getEditorState().read(() => {
+          const text = firstNode.getTextContent();
+          checkForMentionPattern(text);
+        });
+
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    );
+  }, [editor, checkForMentionPattern]);
+
+  const handleMentionSelect = useCallback((suggestion: MentionSuggestion, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    insertMention(suggestion);
+  }, [insertMention]);
 
   return showSuggestions ? (
     <div
@@ -329,18 +335,14 @@ function MentionsPlugin({
       ) : (
         <div className="p-1">
           {suggestions.map((suggestion, index) => (
-            <div
+            <button
               key={`${suggestion.type}-${suggestion.id}`}
-              className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer ${
+              className={`flex items-center gap-2 p-2 rounded-sm cursor-pointer w-full text-left ${
                 index === selectedIndex ? 'bg-accent' : 'hover:bg-accent'
               }`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                insertMention(suggestion);
-                setShowSuggestions(false);
-              }}
+              onClick={(e) => handleMentionSelect(suggestion, e)}
               onMouseEnter={() => setSelectedIndex(index)}
+              type="button"
             >
               {suggestion.type === 'user' ? (
                 <Avatar className="h-6 w-6">
@@ -358,7 +360,7 @@ function MentionsPlugin({
                   {suggestion.type === 'user' ? 'User' : 'Group'}
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
