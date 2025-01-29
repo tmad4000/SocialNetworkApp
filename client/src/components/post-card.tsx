@@ -11,36 +11,11 @@ import CommentSection from "@/components/comment-section";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Link as LinkIcon, MoreVertical, ChevronRight, QrCode, Lock, Users, Globe } from "lucide-react";
 import FollowButton from "@/components/ui/follow-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +23,8 @@ import LexicalEditor from "./lexical-editor";
 import RelatedPosts from "./related-posts";
 import type { Group } from "@db/schema";
 import StarButton from "@/components/ui/star-button";
+import { SharePostModal } from "@/components/share-post-modal";
+
 
 interface PostCardProps {
   post: Post & {
@@ -120,7 +97,6 @@ export default function PostCard({ post }: PostCardProps) {
       return responseData;
     },
     onMutate: async (newData) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/posts"] });
       if (post.groupId) {
         await queryClient.cancelQueries({ queryKey: [`/api/groups/${post.groupId}/posts`] });
@@ -129,14 +105,12 @@ export default function PostCard({ post }: PostCardProps) {
         await queryClient.cancelQueries({ queryKey: [`/api/posts/user/${post.user.id}`] });
       }
 
-      // Get current query data
       const previousData = {
         posts: queryClient.getQueryData<any[]>(["/api/posts"]),
         userPosts: queryClient.getQueryData<any[]>([`/api/posts/user/${post.user.id}`]),
         groupPosts: post.groupId ? queryClient.getQueryData<any[]>([`/api/groups/${post.groupId}/posts`]) : undefined
       };
 
-      // Update all queries optimistically
       const updatePostInCache = (oldPosts: any[] = []) => {
         return oldPosts.map(p => {
           if (p.id === post.id) {
@@ -165,7 +139,6 @@ export default function PostCard({ post }: PostCardProps) {
     onSuccess: (data) => {
       console.log('Mutation succeeded with data:', data); // Debug log
 
-      // Update all queries with the returned data
       const updateQueries = [
         { queryKey: ["/api/posts"] },
         post.user.id ? { queryKey: [`/api/posts/user/${post.user.id}`] } : null,
@@ -187,7 +160,6 @@ export default function PostCard({ post }: PostCardProps) {
     onError: (error, _, context) => {
       console.error('Mutation error:', error); // Debug log
 
-      // Revert all optimistic updates
       if (context?.posts) {
         queryClient.setQueryData(["/api/posts"], context.posts);
       }
@@ -261,7 +233,6 @@ export default function PostCard({ post }: PostCardProps) {
     return parts.map((part, index) => {
       if (part.startsWith('@')) {
         const name = part.slice(1);
-        // Check for user mention
         const userMention = post.mentions?.find(m => m.mentionedUser?.username === name);
         if (userMention) {
           return (
@@ -273,7 +244,6 @@ export default function PostCard({ post }: PostCardProps) {
           );
         }
 
-        // Check for group mention - update styling here
         const groupMention = groups?.find(g => g.name === name);
         if (groupMention) {
           return (
@@ -549,6 +519,7 @@ export default function PostCard({ post }: PostCardProps) {
                 postId={post.id}
                 initialStarred={post.starred}
               />
+              <SharePostModal postId={post.id} />
               <FollowButton postId={post.id} />
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-1.5">
