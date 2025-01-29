@@ -90,6 +90,30 @@ export default function CreatePost({ onSuccess, targetUserId, groupId }: CreateP
         title: "Success",
         description: "Post created successfully",
       });
+
+      // After creating the post, detect @ mentions for boards.
+      const boardMentionRegex = /@(\w[\w-]+)/g;
+      let match;
+      const mentionedBoards: string[] = [];
+      while ((match = boardMentionRegex.exec(content)) !== null) {
+        mentionedBoards.push(match[1]);
+      }
+
+      // Suppose you have a "shareToBoard" function or fetch call:
+      mentionedBoards.forEach(async (boardName) => {
+        try {
+          // Example fetch call to share post to a board (adjust to your endpoint)
+          await fetch(`/api/boards/${boardName}/share`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+            credentials: "include",
+          });
+          // Handle success or UI updates if needed
+        } catch (error) {
+          console.error(`Failed sharing to board ${boardName}: `, error);
+        }
+      });
     },
     onError: (err) => {
       toast({
