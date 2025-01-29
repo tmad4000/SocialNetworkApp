@@ -400,7 +400,6 @@ export function registerRoutes(app: Express): Server {
   });
 
 
-
   app.post("/api/posts/:id/comments", async (req, res) => {
     try {
       if (!req.user) {
@@ -2112,7 +2111,7 @@ export function registerRoutes(app: Express): Server {
 
     const postId = parseInt(req.params.id);
     if(isNaN(postId)) {
-      return res.status(400).send("Invalid post ID");
+            return res.status(400).send("Invalid post ID");
     }
 
     try {
@@ -2370,6 +2369,180 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error updating group:', error);
       res.status(500).send("Error updating group");
+    }
+  });
+
+  // After other post routes, add this new route
+  app.post("/api/posts/:id/share", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) {
+      return res.status(400).send("Invalid post ID");
+    }
+
+    const { targetId, targetType } = req.body;
+    if (!targetId || !targetType || !["user", "group"].includes(targetType)) {
+      return res.status(400).send("Invalid target information");
+    }
+
+    try {
+      // Verify the original post exists and get its data
+      const originalPost = await db.query.posts.findFirst({
+        where: eq(posts.id, postId),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+            }
+          }
+        }
+      });
+
+      if (!originalPost) {
+        return res.status(404).send("Original post not found");
+      }
+
+      // Verify the target exists
+      if (targetType === "user") {
+        const targetUser = await db.query.users.findFirst({
+          where: eq(users.id, targetId),
+        });
+        if (!targetUser) {
+          return res.status(404).send("Target user not found");
+        }
+      } else {
+        const targetGroup = await db.query.groups.findFirst({
+          where: eq(groups.id, targetId),
+        });
+        if (!targetGroup) {
+          return res.status(404).send("Target group not found");
+        }
+
+        // Verify user is a member of the group
+        const isMember = await db.query.groupMembers.findFirst({
+          where: and(
+            eq(groupMembers.groupId, targetId),
+            eq(groupMembers.userId, req.user.id)
+          ),
+        });
+        if (!isMember) {
+          return res.status(403).send("You must be a member of the group to share posts");
+        }
+      }
+
+      // Get the highest manual order value
+      const [highestOrder] = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(manual_order), 0)` })
+        .from(posts);
+
+      // Create a new post as a share
+      const [sharedPost] = await db
+        .insert(posts)
+        .values({
+          content: originalPost.content,
+          userId: req.user.id,
+          groupId: targetType === "group" ? targetId : null,
+          privacy: targetType === "group" ? "public" : "friends",
+          manualOrder: highestOrder.maxOrder + 1000,
+          status: "none",
+          originalPostId: postId,
+        })
+        .returning();
+
+      // Get full post data
+      const createdPost = await db.query.posts.findFirst({
+        where: eq(posts.id, sharedPost.id),
+        with: {
+          user: {
+            columns: {
+              id: true,
+              username: true,
+              avatar: true,
+            }
+          },
+          group: true,
+          mentions: {
+            with: {
+              mentionedUser: {
+                columns: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                }
+              }
+            }
+          },
+          likes: true,
+        }
+      });
+
+      if (!createdPost) {
+        throw new Error("Failed to fetch created post");
+      }
+
+      // Transform the response
+      const transformedPost = {
+        ...createdPost,
+        likeCount: createdPost.likes.length,
+        liked: createdPost.likes.some(like => like.userId === req.user?.id),
+        likes: undefined, // Remove likes array from response
+      };
+
+      res.json(transformedPost);
+    } catch (error) {
+      console.error('Error sharing post:', error);
+      res.status(500).send("Error sharing post");
+    }
+  });
+
+  // Fix the group membership check in the routes file
+  app.post("/api/groups/:id/remove", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const groupId = parseInt(req.params.id);
+    if (isNaN(groupId)) {
+      return res.status(400).send("Invalid group ID");
+    }
+
+    const { userId } = req.body;
+    if (!userId || typeof userId !== "number") {
+      return res.status(400).send("User ID is required");
+    }
+
+    try {
+      // Check if the requesting user is an admin
+      const membership = await db.query.groupMembers.findFirst({
+        where: and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, req.user.id),
+          eq(groupMembers.role, 'admin')
+        ),
+      });
+
+      if (!membership) {
+        return res.status(403).send("Only group admins can remove members");
+      }
+
+      // Remove the member
+      await db
+        .delete(groupMembers)
+        .where(
+          and(
+            eq(groupMembers.groupId, groupId),
+            eq(groupMembers.userId, userId)
+          )
+        );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing group member:', error);
+      res.status(500).send("Error removing group member");
     }
   });
 

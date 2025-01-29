@@ -26,7 +26,7 @@ export function SharePostModal({ postId, trigger }: SharePostModalProps) {
 
   // Fetch users and groups for sharing
   const { data: users } = useQuery({
-    queryKey: ["/api/users/search", search],
+    queryKey: [`/api/users/search?query=${encodeURIComponent(search)}`],
     enabled: search.length > 0,
   });
 
@@ -56,14 +56,23 @@ export function SharePostModal({ postId, trigger }: SharePostModalProps) {
       const response = await fetch(`/api/posts/${postId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({ targetId, targetType }),
       });
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Failed to share post");
+        } else {
+          const errorText = await response.text();
+          throw new Error(errorText || "Failed to share post");
+        }
       }
 
-      return response.json();
+      const data = await response.json();
+      return data;
     },
     onSuccess: (_, variables) => {
       toast({
@@ -91,7 +100,7 @@ export function SharePostModal({ postId, trigger }: SharePostModalProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Share post</DialogTitle>
         </DialogHeader>
