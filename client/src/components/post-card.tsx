@@ -237,19 +237,20 @@ export default function PostCard({ post }: PostCardProps) {
         if (userMention) {
           return (
             <Link key={index} href={`/profile/${userMention.mentionedUser.id}`}>
-              <span className="text-muted-foreground hover:underline cursor-pointer">
+              <span className="text-primary hover:underline cursor-pointer">
                 {part}
               </span>
             </Link>
           );
         }
 
-        const groupMention = groups?.find(g => g.name === name);
+        // Improve group mention check and styling
+        const groupMention = groups?.find(g => g.name.toLowerCase() === name.toLowerCase());
         if (groupMention) {
           return (
             <Link key={index} href={`/groups/${groupMention.id}`}>
-              <span className="font-semibold text-primary hover:underline cursor-pointer">
-                {part}
+              <span className="text-primary font-semibold hover:underline cursor-pointer">
+                @{groupMention.name}
               </span>
             </Link>
           );

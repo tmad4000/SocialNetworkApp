@@ -65,7 +65,7 @@ export default function PostFeed({
   const { data: friends } = useFriends();
   const queryClient = useQueryClient();
   const [internalViewMode, setInternalViewMode] = useState<'standard' | 'minimalist'>('standard');
-  const [sortOrder, setSortOrder] = useState<'dateCreated' | 'manual'>('dateCreated');
+  const [sortOrder, setSortOrder] = useState<'dateCreated' | 'manual' | 'mostLikes'>('dateCreated');
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalShowStatusOnly, setInternalShowStatusOnly] = useState(false);
   const [internalShowStarredOnly, setInternalShowStarredOnly] = useState(false);
@@ -196,6 +196,8 @@ export default function PostFeed({
 
     if (sortOrder === 'manual') {
       sorted.sort((a, b) => (a.manualOrder || 0) - (b.manualOrder || 0));
+    } else if (sortOrder === 'mostLikes') {
+      sorted.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
     } else {
       sorted.sort((a, b) =>
         new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
@@ -265,10 +267,10 @@ export default function PostFeed({
             <TabsTrigger value="minimalist">Minimalist View</TabsTrigger>
           </TabsList>
 
-          <Select 
-            value={sortOrder} 
-            onValueChange={(value) => setSortOrder(value as 'dateCreated' | 'manual')}
-            disabled={activeViewMode === 'minimalist'} 
+          <Select
+            value={sortOrder}
+            onValueChange={(value) => setSortOrder(value as 'dateCreated' | 'manual' | 'mostLikes')}
+            disabled={activeViewMode === 'minimalist'}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Sort by" />
@@ -276,6 +278,7 @@ export default function PostFeed({
             <SelectContent>
               <SelectItem value="dateCreated">Date Created</SelectItem>
               <SelectItem value="manual">Manual Order</SelectItem>
+              <SelectItem value="mostLikes">Most Likes</SelectItem>
             </SelectContent>
           </Select>
         </div>
